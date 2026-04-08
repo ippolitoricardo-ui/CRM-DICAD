@@ -25,6 +25,8 @@ st.markdown("""
         }
         /* Fuerza color negro dentro de la tarjeta principal de negociación */
         .crm-neg-card * { color: black !important; }
+        /* Fuerza color negro al texto de la tarjeta principal de negociación */
+        .crm-neg-card { color: black !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -98,11 +100,11 @@ if section == "Negociaciones":
     else:
         for idx, row in df.iterrows():
             with st.container():
-                # Cabecera de tarjeta (agrega clase CSS para color fuente negro)
+                # Cabecera de tarjeta (agrega color oscuro al texto para buena legibilidad)
                 st.markdown(
                     f"""
                     <div class="crm-neg-card" style="background:white;padding:1.3em;border-radius:12px;
-                    margin-bottom:0.6em; box-shadow:0 1px 8px #d0d6e1;">
+                    margin-bottom:0.6em; box-shadow:0 1px 8px #d0d6e1; color:black !important;">
                         <b>Cliente:</b> {row.get('Cliente', '') if row.get('Cliente', '').strip() else 'N/A'} <br>
                         <b>Empresa:</b> {row.get('Empresa', '') if row.get('Empresa', '').strip() else 'N/A'} <br>
                         <b>Monto USD / $:</b> <span style="color:#2261b6">{row.get('Monto USD / $', '')}</span>
