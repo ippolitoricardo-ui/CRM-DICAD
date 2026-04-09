@@ -102,17 +102,32 @@ if section == "Negociaciones":
     if df.empty:
         st.info("No hay negociaciones registradas todavía.")
     else:
-            # --- NUEVO: TABLERO DE CONTROL (KPIs) Y GRÁFICO ---
-            st.markdown("### 📊 Resumen de Ventas")
+            # 0. Limpieza automática (Arregla el problema del "0" y los vacíos en los gráficos)
+            if 'Estado_Nego' not in df.columns:
+                df['Estado_Nego'] = 'En Proceso'
+            df['Estado_Nego'] = df['Estado_Nego'].replace(['', '0', 0, None], 'En Proceso').fillna('En Proceso')
+            df['Asesor'] = df['Asesor'].replace(['', '0', 0, None], 'Sin Asignar').fillna('Sin Asignar')
 
-            # 1. Calculamos la plata matemáticamente separando USD de ARS
+            # 1. EL FILTRO PARA EL DUEÑO (Administrador)
+            st.markdown("### 👔 Vista de Administrador")
+            lista_asesores = ["Todos los Asesores"] + sorted(list(df['Asesor'].unique()))
+            asesor_seleccionado = st.selectbox("Filtrar métricas por Asesor:", lista_asesores)
+
+            # Filtramos la tabla según lo que elijas en el menú
+            if asesor_seleccionado == "Todos los Asesores":
+                df_tablero = df # Usa todos los datos
+            else:
+                df_tablero = df[df['Asesor'] == asesor_seleccionado] # Usa solo los de ese asesor
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # 2. LAS TARJETAS NUMÉRICAS (Ahora calculan sobre df_tablero)
             total_usd = 0
             total_ars = 0
 
-            for val in df['Monto USD / $'].dropna():
+            for val in df_tablero['Monto USD / $'].dropna():
                 val_str = str(val).upper()
                 if "USD" in val_str:
-                    # Le sacamos la palabra USD, los espacios, y sumamos el número
                     numero = val_str.replace("USD", "").replace(",", "").strip()
                     try: total_usd += float(numero)
                     except: pass
@@ -121,22 +136,17 @@ if section == "Negociaciones":
                     try: total_ars += float(numero)
                     except: pass
 
-            # 2. Dibujamos las tres tarjetas numéricas
             kpi1, kpi2, kpi3 = st.columns(3)
             kpi1.metric(label="💰 Total Cotizado (USD)", value=f"USD {total_usd:,.0f}")
             kpi2.metric(label="💵 Total Cotizado (ARS)", value=f"ARS {total_ars:,.0f}")
-            kpi3.metric(label="🤝 Negociaciones Activas", value=f"{len(df)}")
+            kpi3.metric(label="🤝 Negociaciones", value=f"{len(df_tablero)}")
 
-            st.markdown("<br>", unsafe_allow_html=True) # Pequeño espacio
-
-# 3. LOS GRÁFICOS (Torta y Barras)
-            st.markdown("---") # Línea separadora
-            st.markdown("#### 📈 Análisis de Negociaciones")
+            # 3. LOS GRÁFICOS (Ahora reaccionan al filtro)
+            st.markdown("---") 
             
             col_graf1, col_graf2 = st.columns(2)
             
             with col_graf1:
-                # TRUCO: Extraer solo números de los USD
                 def extraer_usd(valor):
                     texto = str(valor).upper()
                     if "USD" in texto:
@@ -145,13 +155,13 @@ if section == "Negociaciones":
                         except: return 0.0
                     return 0.0
                 
-                # Aplicamos la limpieza y sumamos
-                df['Plata_USD'] = df['Monto USD / $'].apply(extraer_usd)
-                datos_torta = df.groupby('Estado_Nego')['Plata_USD'].sum().reset_index()
+                # Ojo acá: Usamos una copia para no ensuciar tu Excel original
+                df_grafico = df_tablero.copy()
+                df_grafico['Plata_USD'] = df_grafico['Monto USD / $'].apply(extraer_usd)
+                datos_torta = df_grafico.groupby('Estado_Nego')['Plata_USD'].sum().reset_index()
                 
-                # Dibujamos la Dona
                 fig_torta = px.pie(datos_torta, values='Plata_USD', names='Estado_Nego', 
-                                 title='Monto en Dólares por Estado',
+                                 title=f'Monto en Dólares ({asesor_seleccionado})',
                                  hole=0.4,
                                  color='Estado_Nego',
                                  color_discrete_map={'Ganada':'#28a745', 'Perdida':'#dc3545', 'En Proceso':'#ffc107'})
@@ -159,14 +169,12 @@ if section == "Negociaciones":
                 st.plotly_chart(fig_torta, use_container_width=True)
 
             with col_graf2:
-                if 'Asesor' in df.columns:
-                    datos_barras = df['Asesor'].value_counts().reset_index()
-                    datos_barras.columns = ['Asesor', 'Cantidad']
-                    fig_barras = px.bar(datos_barras, x='Asesor', y='Cantidad', 
-                                      title='Clientes activos por Asesor',
-                                      color='Asesor')
-                    st.plotly_chart(fig_barras, use_container_width=True) # Línea horizontal para separar el tablero de la búsqueda
-
+                datos_barras = df_tablero['Asesor'].value_counts().reset_index()
+                datos_barras.columns = ['Asesor', 'Cantidad']
+                fig_barras = px.bar(datos_barras, x='Asesor', y='Cantidad', 
+                                  title='Cantidad de Clientes',
+                                  color='Asesor')
+                st.plotly_chart(fig_barras, use_container_width=True)
 # --- EL BUSCADOR Y EL BOTÓN DE REFRESCO ---
             col_busq, col_refresco = st.columns([4, 1])
             
@@ -184,8 +192,8 @@ if section == "Negociaciones":
                 # Convertimos a texto por las dudas y buscamos coincidencias
                 df_filtrado = df[
                     df['Cliente'].astype(str).str.contains(busqueda, case=False, na=False) |
-                    df['Empresa'].astype(str).str.contains(busqueda, case=False, na=False)
-                ]
+                    df['Empresa'].astype(str).str.contains(busqueda, case=False, na=False)  
+                    ]
             else:
                 df_filtrado = df # Si no buscó nada, mostramos todo
             # ACA EMPIEZA TU BUCLE ORIGINAL PERO CON LOS DATOS FILTRADOS
@@ -301,38 +309,48 @@ if section == "Agregar Cliente":
                     except Exception as e:
                         st.error(f"Hubo un error al intentar guardar: {e}")
 
-# --- SECCION CALENDARIO ---
-if section == "Calendario":
-    st.markdown("## :calendar: Calendario de llamadas")
-
-    df = get_data()
-    if df.empty:
-        st.info("No hay datos de negociaciones aún.")
-    else:
-        # Maneja conversiones para "Proxima llamada"
-        df['Proxima llamada'] = pd.to_datetime(df['Proxima llamada'], errors='coerce').dt.date
-        hoy = date.today()
-        pendientes = df[df['Proxima llamada'] <= hoy]
-
-        if pendientes.empty:
-            st.success("¡No hay llamadas pendientes ni vencidas hoy! 🎉")
+# --- SECCIÓN CALENDARIO ---
+    if section == "Calendario":
+        st.markdown("## 📅 Agenda de Seguimientos")
+        
+        df = get_data()
+        
+        if df.empty:
+            st.info("No hay clientes registrados todavía.")
         else:
-            st.warning(f"Hay {len(pendientes)} llamadas pendientes o vencidas:")
-            for idx, row in pendientes.iterrows():
-                color = "#2261b6" if row.get("Proxima llamada", '') == hoy else "#e87060"
-                st.markdown(
-                    f"""
-                    <div style="background:white;padding:1em 1.3em;border-radius:9px;
-                    margin-bottom:1em; border-left: 6px solid {color}; box-shadow:0 1px 5px #e6eaf2;">
-                        <b>Cliente:</b> {row.get('Cliente', '')} <br>
-                        <b>Asesor comercial:</b> {row.get('Asesor comercial', '')} <br>
-                        <b>Empresa:</b> {row.get('Empresa', '')} <br>
-                        <b>Proxima llamada:</b> 
-                          <span style="background:{color};color:#fff;padding:2px 7px; border-radius:3px">
-                            {row.get('Proxima llamada', '').strftime('%d/%m/%Y') if pd.notnull(row.get('Proxima llamada', '')) and row.get('Proxima llamada', '') else ''}
-                          </span>
-                        <br>
-                        <b>Monto USD / $:</b> {row.get('Monto USD / $', '')} <br>
-                        <i>{row.get('Notas', '')}</i>
-                    </div>
-                    """, unsafe_allow_html=True)
+            # 1. Filtramos SOLO los que están "En Proceso" (No queremos llamar a los que ya nos compraron o nos rechazaron)
+            if 'Estado_Nego' in df.columns:
+                df_activos = df[df['Estado_Nego'] == 'En Proceso'].copy()
+            else:
+                df_activos = df.copy()
+            
+            if df_activos.empty:
+                st.success("¡Todo al día! No hay clientes en proceso esperando seguimiento.")
+            else:
+                # 2. Convertimos el texto de la fecha a una "Fecha Real" matemática para que Python sepa cuál va antes
+                df_activos['Fecha_Orden'] = pd.to_datetime(df_activos['Proxima llamada'], format='%d/%m/%Y', errors='coerce')
+                
+                # 3. Ordenamos la tabla de la fecha más urgente (vieja) a la más lejana
+                df_ordenado = df_activos.sort_values(by='Fecha_Orden', ascending=True)
+                
+                st.markdown("Estos son los clientes activos ordenados por su fecha de próxima llamada:")
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # 4. Dibujamos la lista como si fuera una agenda de celular
+                for idx, row in df_ordenado.iterrows():
+                    fecha_texto = row.get('Proxima llamada', 'Sin fecha')
+                    cliente = row.get('Cliente', 'Desconocido')
+                    empresa = row.get('Empresa', 'Sin empresa')
+                    tel = row.get('Telefono', 'Sin teléfono')
+                    asesor = row.get('Asesor', '')
+                    
+                    with st.container():
+                        st.markdown(
+                            f"""
+                            <div style="background-color: #2E3E57; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #FF6600;">
+                                <h4 style="color: white; margin: 0;">📅 {fecha_texto} | {cliente} ({empresa})</h4>
+                                <p style="color: #d0d6e1; margin: 5px 0 0 0;">📞 Tel: <b>{tel}</b> | 👔 Asesor: {asesor}</p>
+                            </div>
+                            """, 
+                            unsafe_allow_html=True
+                        )
