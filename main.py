@@ -5,15 +5,18 @@ import pandas as pd
 
 # --- CONFIGURACION DE PÁGINA Y ESTILOS ---
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
-st.markdown("""
+st.markdown(
+    """
     <style>
-    /* Evita que el usuario pueda sombrear en azul el menú lateral por accidente */
-    section[data-testid="stSidebar"] {
-        user-select: none;
+    /* Bloqueo agresivo de seleccion para la barra lateral y todo lo que tenga adentro */
+    [data-testid="stSidebar"], [data-testid="stSidebar"] * {
+        user-select: none !important;
+        -webkit-user-select: none !important;
     }
     </style>
     """,
-    unsafe_allow_html=True)
+    unsafe_allow_html=True
+)
 
 st.markdown("""
     <style>
