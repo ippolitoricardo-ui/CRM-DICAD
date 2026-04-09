@@ -153,53 +153,73 @@ if section == "Negociaciones":
                         creado = row.get('Creado', '')
                         st.markdown(f"**Creado:** {creado if creado else 'N/A'}")
 
-# --- SECCION AGREGAR CLIENTE ---
+# --- PESTAÑA: AGREGAR CLIENTE ---
 if section == "Agregar Cliente":
-    st.markdown("## :man-raising-hand: Agregar nuevo cliente/negociación")
-
-    with st.form("nuevo_cliente"):
+    st.markdown("<h2>🙋‍♂️ Agregar nuevo cliente/negociación</h2>", unsafe_allow_html=True)
+    
+    # Abrimos la "cápsula" del formulario. clear_on_submit limpia todo si hay éxito.
+    with st.form("form_nuevo_cliente", clear_on_submit=True):
         col1, col2 = st.columns(2)
-        cliente = col1.text_input("Nombre del cliente *")
-        profesion = col2.text_input("Profesión")
-        direccion = col1.text_input("Dirección")
-        pais = col2.text_input("País")
-        ciudad = col1.text_input("Ciudad")
-        estado_prov = col2.text_input("Estado /Prov.")   # Corrige el label para coincidir con la columna exacta
-        empresa = col1.text_input("Empresa")
-        cargo = col2.text_input("Cargo")
-        telefono = col1.text_input("Teléfono")
-        n_cotiz = col2.text_input("N° Cotiz.")
-        monto = col1.text_input("Monto USD / $")
-        notas = col2.text_area("Notas")
-        proxima_llamada = col1.date_input("Proxima llamada", value=date.today(), key="proxima_llamada")  # Sin tilde, para coincidir con columna
-        asesor_comercial = col2.selectbox("Asesor comercial", ["Ricardo Ippolito", "Gustavo Carballo", "Santiago Yagüe", "Joaquin Pons"])
-        # No se captura 'Creado', se autogenera
-
-        submitted = st.form_submit_button("Agregar")
-
-    if submitted:
-        if cliente.strip() == "":
-            st.error("El nombre del cliente es obligatorio.")
-        else:
-            row = [
-                cliente,
-                profesion,
-                direccion,
-                pais,
-                ciudad,
-                estado_prov,
-                empresa,
-                cargo,
-                telefono,
-                n_cotiz,
-                monto,
-                notas,
-                proxima_llamada.strftime("%Y-%m-%d") if isinstance(proxima_llamada, (datetime, date)) else proxima_llamada,
-                asesor_comercial,
-                datetime.now().strftime("%Y-%m-%d %H:%M")
-            ]
-            save_data(row)
-            st.success(f"Cliente '{cliente}' agregado correctamente.")
+        
+        with col1:
+            cliente = st.text_input("Nombre del cliente *")
+            direccion = st.text_input("Dirección")
+            ciudad = st.text_input("Ciudad")
+            empresa = st.text_input("Empresa")
+            telefono = st.text_input("Teléfono")
+            monto = st.text_input("Monto USD / $")
+            proxima_llamada = st.date_input("Próxima llamada")
+            
+        with col2:
+            profesion = st.text_input("Profesión")
+            pais = st.text_input("País")
+            estado = st.text_input("Estado /Prov.")
+            cargo = st.text_input("Cargo")
+            cotizacion = st.text_input("N° Cotiz.")
+            notas = st.text_area("Notas")
+            asesor = st.selectbox("Asesor comercial", ["Ricardo Ippolito", "Otro Asesor..."])
+            
+        st.markdown("<br>", unsafe_allow_html=True)
+        # El botón que dispara la acción de guardar
+        submit_btn = st.form_submit_button("Agregar Negociación", type="primary")
+        
+        # --- LA LÓGICA DE GUARDADO ---
+        if submit_btn:
+            if cliente.strip() == "":
+                st.warning("⚠️ El Nombre del cliente es obligatorio para crear la ficha.")
+            else:
+                with st.spinner("Guardando en la base de datos..."):
+                    # 1. Empaquetamos los datos en una nueva fila. 
+                    # IMPORTANTE: Las claves ("Cliente", "Profesion"...) tienen que coincidir exacto con tu lista COLUMNS
+                    nuevo_dato = pd.DataFrame([{
+                        "Cliente": cliente,
+                        "Profesion": profesion,
+                        "Direccion": direccion,
+                        "Pais": pais,
+                        "Ciudad": ciudad,
+                        "Estado /Prov.": estado,
+                        "Empresa": empresa,
+                        "Cargo": cargo,
+                        "Telefono": telefono,
+                        "N° Cotiz.": cotizacion,
+                        # Si te faltan columnas en tu lista original (como Notas o Proxima llamada), 
+                        # agregalas a la variable COLUMNS arriba de todo en tu código y sumalas acá.
+                    }])
+                    
+                    try:
+                        # 2. Descargamos la planilla actual
+                        df_actual = conn.read(worksheet=worksheet_name, usecols=list(range(len(COLUMNS))), names=COLUMNS, ttl=5)
+                        
+                        # 3. Pegamos la nueva fila al final
+                        df_actualizado = pd.concat([df_actual, nuevo_dato], ignore_index=True)
+                        
+                        # 4. Sobrescribimos el Google Sheets con la tabla actualizada
+                        conn.update(worksheet=worksheet_name, data=df_actualizado)
+                        st.cache_data.clear() # Limpiamos la caché para que el buscador de la otra pestaña lo vea al instante
+                        
+                        st.success(f"✅ ¡La negociación con {cliente} se guardó exitosamente!")
+                    except Exception as e:
+                        st.error(f"Hubo un error al intentar guardar: {e}")
 
 # --- SECCION CALENDARIO ---
 if section == "Calendario":
