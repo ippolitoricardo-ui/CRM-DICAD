@@ -5,24 +5,6 @@ import pandas as pd
 
 # --- CONFIGURACION DE PÁGINA Y ESTILOS ---
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
-st.markdown("""
-    <style>
-    /* 1. Fondo general de la app claro */
-    .stApp {
-        background-color: #f5f8fa;
-    }
-    
-    /* 2. Forzar que los textos principales se vean oscuros (Salva las Negociaciones) */
-    .main p, .main span, .main div {
-        color: #222 !important;
-    }
-    
-    /* 3. Bloqueo suave del texto azul en el menú lateral */
-    [data-testid="stSidebar"] label {
-        user-select: none !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
 
 # --- SIDEBAR ---
 st.sidebar.markdown(
