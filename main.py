@@ -8,7 +8,11 @@ st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.markdown("<h2 style='color:#fff; margin-bottom:1em;'>CRM DICAD AMÉRICA</h2>", unsafe_allow_html=True)
+    # 1. EL LOGO Y EL TÍTULO
+    st.markdown("<div style='text-align: center; margin-bottom: 1em;'>", unsafe_allow_html=True)
+    st.image("logo_dicad.png", width=100)
+    st.markdown("<p style='color:#fff; font-size:16px; margin-top:0.5em;'>CRM DICAD AMÉRICA</p>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     
     # EL NUEVO MENÚ PROFESIONAL
     section = option_menu(
