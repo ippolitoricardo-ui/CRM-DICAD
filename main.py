@@ -100,32 +100,63 @@ if section == "Negociaciones":
     if df.empty:
         st.info("No hay negociaciones registradas todavía.")
     else:
+            # --- NUEVO: TABLERO DE CONTROL (KPIs) Y GRÁFICO ---
+            st.markdown("### 📊 Resumen de Ventas")
+
+            # 1. Calculamos la plata matemáticamente separando USD de ARS
+            total_usd = 0
+            total_ars = 0
+
+            for val in df['Monto USD / $'].dropna():
+                val_str = str(val).upper()
+                if "USD" in val_str:
+                    # Le sacamos la palabra USD, los espacios, y sumamos el número
+                    numero = val_str.replace("USD", "").replace(",", "").strip()
+                    try: total_usd += float(numero)
+                    except: pass
+                elif "ARS" in val_str:
+                    numero = val_str.replace("ARS", "").replace(",", "").strip()
+                    try: total_ars += float(numero)
+                    except: pass
+
+            # 2. Dibujamos las tres tarjetas numéricas
+            kpi1, kpi2, kpi3 = st.columns(3)
+            kpi1.metric(label="💰 Total Cotizado (USD)", value=f"USD {total_usd:,.0f}")
+            kpi2.metric(label="💵 Total Cotizado (ARS)", value=f"ARS {total_ars:,.0f}")
+            kpi3.metric(label="🤝 Negociaciones Activas", value=f"{len(df)}")
+
+            st.markdown("<br>", unsafe_allow_html=True) # Pequeño espacio
+
+            # 3. EL GRÁFICO: Qué asesor tiene más negociaciones
+            st.markdown("#### 📈 Negociaciones por Asesor")
+            if 'Asesor' in df.columns:
+                # Cuenta automáticamente cuántos clientes tiene Ricardo, etc.
+                datos_grafico = df['Asesor'].value_counts()
+                st.bar_chart(datos_grafico)
+            
+            st.markdown("---") # Línea horizontal para separar el tablero de la búsqueda
+
 # --- EL BUSCADOR Y EL BOTÓN DE REFRESCO ---
-        col_busq, col_refresco = st.columns([4, 1])
-        
-        with col_busq:
-            busqueda = st.text_input("🔍 Buscar por Cliente o Empresa:", placeholder="Ej: Juan Perez...")
+            col_busq, col_refresco = st.columns([4, 1])
             
-        with col_refresco:
-            st.markdown("<br>", unsafe_allow_html=True) # Para alinear con el buscador
-            if st.button("🔄 Actualizar"):
-                st.cache_data.clear() # Limpia la memoria
-                st.rerun() # Reinicia la app para traer los datos nuevos
-        
-        # Lógica de filtrado
-        if busqueda:
-            # Convertimos a texto por las dudas y buscamos coincidencias ignorando mayúsculas
-            df_filtrado = df[
-                df['Cliente'].astype(str).str.contains(busqueda, case=False, na=False) |
-                df['Empresa'].astype(str).str.contains(busqueda, case=False, na=False)
-            ]
-        else:
-            df_filtrado = df # Si no buscó nada, mostramos todo
-            
-        # Revisamos si la búsqueda encontró algo
-        if df_filtrado.empty:
-            st.warning(f"No encontramos ninguna negociación para: '{busqueda}'")
-        else:
+            with col_busq:
+                busqueda = st.text_input("🔍 Buscar por Cliente o Empresa:", placeholder="Ej: Juan Perez...")
+                
+            with col_refresco:
+                st.markdown("<br>", unsafe_allow_html=True) # Para alinear con el buscador
+                if st.button("🔄 Actualizar"):
+                    st.cache_data.clear() # Limpia la memoria
+                    st.rerun() # Reinicia la app para traer los datos nuevos
+                    
+            # Lógica de filtrado
+            if busqueda:
+                # Convertimos a texto por las dudas y buscamos coincidencias
+                df_filtrado = df[
+                    df['Cliente'].astype(str).str.contains(busqueda, case=False, na=False) |
+                    df['Empresa'].astype(str).str.contains(busqueda, case=False, na=False)
+                ]
+            else:
+                df_filtrado = df # Si no buscó nada, mostramos todo
             # ACA EMPIEZA TU BUCLE ORIGINAL PERO CON LOS DATOS FILTRADOS
             for idx, row in df_filtrado.iterrows():
                 with st.container():
