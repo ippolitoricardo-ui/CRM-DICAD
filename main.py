@@ -7,18 +7,17 @@ import pandas as pd
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 st.markdown("""
     <style>
-    /* 1. Recuperar el color negro para que se lea el texto en las tarjetas blancas */
-    .crm-neg-card * {
-        color: black !important;
+    /* 1. Fondo general de la app claro */
+    .stApp {
+        background-color: #f5f8fa;
     }
     
-    /* 2. Estilo limpio para los botones */
-    .stButton>button {
-        border-radius: 7px;
-        border: 1px solid #2261b6;
+    /* 2. Forzar que los textos principales se vean oscuros (Salva las Negociaciones) */
+    .main p, .main span, .main div {
+        color: #222 !important;
     }
     
-    /* 3. Bloqueo suave del texto azul en el menú lateral (sin romper la app) */
+    /* 3. Bloqueo suave del texto azul en el menú lateral */
     [data-testid="stSidebar"] label {
         user-select: none !important;
     }
