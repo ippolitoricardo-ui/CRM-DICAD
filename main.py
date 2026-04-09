@@ -2,20 +2,27 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime, date
 import pandas as pd
-
+from streamlit_option_menu import option_menu
 # --- CONFIGURACION DE PÁGINA Y ESTILOS ---
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
 # --- SIDEBAR ---
-st.sidebar.markdown(
-    "<h2 style='color:#fff; margin-bottom:1em;'>CRM DICAD AMÉRICA</h2>", 
-    unsafe_allow_html=True
-)
-section = st.sidebar.radio(
-    "Ir a:", 
-    ["Negociaciones", "Agregar Cliente", "Calendario"], 
-    key="choose_section"
-)
+with st.sidebar:
+    st.markdown("<h2 style='color:#fff; margin-bottom:1em;'>CRM DICAD AMÉRICA</h2>", unsafe_allow_html=True)
+    
+    # EL NUEVO MENÚ PROFESIONAL
+    section = option_menu(
+        menu_title=None, 
+        options=["Negociaciones", "Agregar Cliente", "Calendario"],
+        icons=["briefcase", "person-plus", "calendar-date"], 
+        default_index=0,
+        styles={
+            "container": {"padding": "0!important", "background-color": "transparent"},
+            "icon": {"color": "white", "font-size": "18px"}, 
+            "nav-link": {"color": "white", "font-size": "16px", "text-align": "left", "margin":"0px", "--hover-color": "#3373c8"},
+            "nav-link-selected": {"background-color": "#FF6600"},
+        }
+    )
 
 # --- CONEXIÓN A GOOGLE SHEETS ---
 GSHEET_URL = st.secrets.get("SHEET_URL", "https://docs.google.com/spreadsheets/d/___/edit#gid=0")  # Usa st.secrets!
