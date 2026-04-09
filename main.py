@@ -65,8 +65,9 @@ COLUMNS = [
     "Monto USD / $",
     "Notas",
     "Proxima llamada",
-    "Asesor comercial",
-    "Creado"
+    "Creado",
+    "Asesor",
+    "Estado_Nego"
 ]
 
 VENDEDORES = ["Alice", "Bob", "Carlos", "Diana"]  # Puedes modificarlo según tus asesores reales
@@ -257,7 +258,8 @@ if section == "Agregar Cliente":
                         "Monto USD / $": monto_final, # <- Acá viaja el monto fusionado
                         "Notas": notas,
                         "Proxima llamada": proxima_llamada.strftime("%d/%m/%Y"),
-                        "Asesor": asesor
+                        "Asesor": asesor,
+                        "Estado_Nego": "En Proceso"
                     }])
                     
                     try:
