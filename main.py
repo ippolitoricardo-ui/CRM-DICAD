@@ -262,7 +262,7 @@ if section == "Agregar Cliente":
             cargo = st.text_input("Cargo")
             cotizacion = st.text_input("N° Cotiz.")
             notas = st.text_area("Notas")
-            asesor = st.selectbox("Asesor comercial", ["Ricardo Ippolito", "Otro Asesor..."])
+            asesor = st.selectbox("Asesor comercial", ["Ricardo Ippolito", "Gustavo Carballo", "Santiago Yagüe", "Joaquin Pons"])
             
         st.markdown("<br>", unsafe_allow_html=True)
         submit_btn = st.form_submit_button("Agregar Negociación", type="primary")
@@ -310,47 +310,47 @@ if section == "Agregar Cliente":
                         st.error(f"Hubo un error al intentar guardar: {e}")
 
 # --- SECCIÓN CALENDARIO ---
-    if section == "Calendario":
-        st.markdown("## 📅 Agenda de Seguimientos")
-        
-        df = get_data()
-        
-        if df.empty:
-            st.info("No hay clientes registrados todavía.")
+elif section == "Calendario":
+    st.markdown("## 📅 Agenda de Seguimientos")
+    
+    df = get_data()
+    
+    if df.empty:
+        st.info("No hay clientes registrados todavía.")
+    else:
+        # 1. Filtramos SOLO los que están "En Proceso" (No queremos llamar a los que ya nos compraron o nos rechazaron)
+        if 'Estado_Nego' in df.columns:
+            df_activos = df[df['Estado_Nego'] == 'En Proceso'].copy()
         else:
-            # 1. Filtramos SOLO los que están "En Proceso" (No queremos llamar a los que ya nos compraron o nos rechazaron)
-            if 'Estado_Nego' in df.columns:
-                df_activos = df[df['Estado_Nego'] == 'En Proceso'].copy()
-            else:
-                df_activos = df.copy()
+            df_activos = df.copy()
+        
+        if df_activos.empty:
+            st.success("¡Todo al día! No hay clientes en proceso esperando seguimiento.")
+        else:
+            # 2. Convertimos el texto de la fecha a una "Fecha Real" matemática para que Python sepa cuál va antes
+            df_activos['Fecha_Orden'] = pd.to_datetime(df_activos['Proxima llamada'], format='%d/%m/%Y', errors='coerce')
             
-            if df_activos.empty:
-                st.success("¡Todo al día! No hay clientes en proceso esperando seguimiento.")
-            else:
-                # 2. Convertimos el texto de la fecha a una "Fecha Real" matemática para que Python sepa cuál va antes
-                df_activos['Fecha_Orden'] = pd.to_datetime(df_activos['Proxima llamada'], format='%d/%m/%Y', errors='coerce')
+            # 3. Ordenamos la tabla de la fecha más urgente (vieja) a la más lejana
+            df_ordenado = df_activos.sort_values(by='Fecha_Orden', ascending=True)
+            
+            st.markdown("Estos son los clientes activos ordenados por su fecha de próxima llamada:")
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # 4. Dibujamos la lista como si fuera una agenda de celular
+            for idx, row in df_ordenado.iterrows():
+                fecha_texto = row.get('Proxima llamada', 'Sin fecha')
+                cliente = row.get('Cliente', 'Desconocido')
+                empresa = row.get('Empresa', 'Sin empresa')
+                tel = row.get('Telefono', 'Sin teléfono')
+                asesor = row.get('Asesor', '')
                 
-                # 3. Ordenamos la tabla de la fecha más urgente (vieja) a la más lejana
-                df_ordenado = df_activos.sort_values(by='Fecha_Orden', ascending=True)
-                
-                st.markdown("Estos son los clientes activos ordenados por su fecha de próxima llamada:")
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                # 4. Dibujamos la lista como si fuera una agenda de celular
-                for idx, row in df_ordenado.iterrows():
-                    fecha_texto = row.get('Proxima llamada', 'Sin fecha')
-                    cliente = row.get('Cliente', 'Desconocido')
-                    empresa = row.get('Empresa', 'Sin empresa')
-                    tel = row.get('Telefono', 'Sin teléfono')
-                    asesor = row.get('Asesor', '')
-                    
-                    with st.container():
-                        st.markdown(
-                            f"""
-                            <div style="background-color: #2E3E57; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #FF6600;">
-                                <h4 style="color: white; margin: 0;">📅 {fecha_texto} | {cliente} ({empresa})</h4>
-                                <p style="color: #d0d6e1; margin: 5px 0 0 0;">📞 Tel: <b>{tel}</b> | 👔 Asesor: {asesor}</p>
-                            </div>
-                            """, 
-                            unsafe_allow_html=True
-                        )
+                with st.container():
+                    st.markdown(
+                        f"""
+                        <div style="background-color: #2E3E57; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #FF6600;">
+                            <h4 style="color: white; margin: 0;">📅 {fecha_texto} | {cliente} ({empresa})</h4>
+                            <p style="color: #d0d6e1; margin: 5px 0 0 0;">📞 Tel: <b>{tel}</b> | 👔 Asesor: {asesor}</p>
+                        </div>
+                        """, 
+                        unsafe_allow_html=True
+                    )
