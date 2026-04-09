@@ -5,47 +5,27 @@ import pandas as pd
 
 # --- CONFIGURACION DE PÁGINA Y ESTILOS ---
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
-st.markdown(
-    """
-<style>
-        /* Escudo impenetrable contra el sombreado azul para TODA la barra lateral */
-        .stRadio, .stRadio *, [data-testid="stSidebar"], [data-testid="stSidebar"] * {
-            user-select: none !important;
-            -webkit-user-select: none !important;
-        }
-        
-        .stRadio ::selection, [data-testid="stSidebar"] ::selection {
-            background: transparent !important;
-        }
-        ::-moz-selection {
-            background: transparent !important;
-        }
-        </style>   
-    """,
-    unsafe_allow_html=True
-)
-
 st.markdown("""
     <style>
-        .main {background: #f5f8fa;}
-        .css-1d391kg {background: #f5f8fa;}
-        .css-1v0mbdj {background: #2261b6;}
-        .sidebar .sidebar-content {background: #2261b6; color: #fff;}
-        .css-1aumxhk {color: #fff;}
-        .st-bt {background: #2261b6;}
-        .stButton>button {background-color: #2261b6; color: white; border-radius:7px;}
-        .stTextInput>div>div>input {
-            background-color: #f5f8fa;
-            color: #222 !important;
-        }
-        .stTextArea textarea {
-            background-color: #fff;
-            color: #222 !important;
-        }
-        /* Fuerza color negro dentro de la tarjeta principal de negociación */
-        .crm-neg-card * { color: black !important; }
-        /* Fuerza color negro al texto de la tarjeta principal de negociación */
-        .crm-neg-card { color: black !important; }
+    /* 1. Bloqueo GLOBAL del maldito sombreado azul */
+    * {
+        user-select: none !important;
+        -webkit-user-select: none !important;
+    }
+    /* 2. Excepción: Permitir escribir y seleccionar texto en los inputs y notas */
+    input, textarea {
+        user-select: text !important;
+        -webkit-user-select: text !important;
+    }
+    
+    /* 3. Tus colores corporativos DICAD */
+    .main {background: #f5f8fa;}
+    .css-1d391kg {background: #f5f8fa;}
+    .css-1v0mbdj {background: #2261b6;}
+    .sidebar .sidebar-content {background: #2261b6; color: #fff;}
+    .css-1aumxhk {color: #fff;}
+    .st-bt {background: #2261b6;}
+    .stButton>button {background-color: #2261b6; color: white; border-radius:7px;}
     </style>
 """, unsafe_allow_html=True)
 
