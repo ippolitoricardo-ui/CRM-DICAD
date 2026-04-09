@@ -100,9 +100,17 @@ if section == "Negociaciones":
     if df.empty:
         st.info("No hay negociaciones registradas todavía.")
     else:
-        # --- EL BUSCADOR MÁGICO ---
-        busqueda = st.text_input("🔍 Buscar por Cliente o Empresa:", placeholder="Ej: Juan Perez o PRUEBA LTD...")
-        st.markdown("<br>", unsafe_allow_html=True) # Un pequeño espacio visual
+# --- EL BUSCADOR Y EL BOTÓN DE REFRESCO ---
+        col_busq, col_refresco = st.columns([4, 1])
+        
+        with col_busq:
+            busqueda = st.text_input("🔍 Buscar por Cliente o Empresa:", placeholder="Ej: Juan Perez...")
+            
+        with col_refresco:
+            st.markdown("<br>", unsafe_allow_html=True) # Para alinear con el buscador
+            if st.button("🔄 Actualizar"):
+                st.cache_data.clear() # Limpia la memoria
+                st.rerun() # Reinicia la app para traer los datos nuevos
         
         # Lógica de filtrado
         if busqueda:
