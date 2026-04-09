@@ -8,11 +8,26 @@ st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
 # --- SIDEBAR ---
 with st.sidebar:
-    # 1. EL LOGO Y EL TÍTULO
-    st.markdown("<div style='text-align: center; margin-bottom: 1em;'>", unsafe_allow_html=True)
-    st.image("logo_dicad.png", width=100)
-    st.markdown("<p style='color:#fff; font-size:16px; margin-top:0.5em;'>CRM DICAD AMÉRICA</p>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    # 1. FORZAR EL FONDO AZUL DICAD Y LETRAS BLANCAS
+    st.markdown("""
+        <style>
+        [data-testid="stSidebar"] {
+            background-color: #2E3E57 !important;
+        }
+        [data-testid="stSidebar"] * {
+            color: white !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    # 2. LOGO MÁS GRANDE Y CENTRADO PERFECTO (usando columnas)
+    st.write("") # Un pequeño espacio arriba
+    col1, col2, col3 = st.columns([1, 4, 1]) # Crea 3 columnas (la del medio es más ancha)
+    with col2:
+        st.image("logo_dicad.png", use_column_width=True) # La imagen se adapta a la columna central
+        
+    st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True) # Un espacio antes del menú
     
     # EL NUEVO MENÚ PROFESIONAL
     section = option_menu(
