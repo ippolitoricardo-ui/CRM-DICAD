@@ -151,7 +151,7 @@ if section == "Agregar Cliente":
         monto = col1.text_input("Monto USD / $")
         notas = col2.text_area("Notas")
         proxima_llamada = col1.date_input("Proxima llamada", value=date.today(), key="proxima_llamada")  # Sin tilde, para coincidir con columna
-        asesor_comercial = col2.selectbox("Asesor comercial", VENDEDORES)
+        asesor_comercial = col2.selectbox("Asesor comercial", ["Ricardo Ippolito", "Gustavo Carballo", "Santiago Yagüe", "Joaquin Pons"])
         # No se captura 'Creado', se autogenera
 
         submitted = st.form_submit_button("Agregar")
