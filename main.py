@@ -100,19 +100,38 @@ if section == "Negociaciones":
     if df.empty:
         st.info("No hay negociaciones registradas todavía.")
     else:
-        for idx, row in df.iterrows():
-            with st.container():
-                # Cabecera de tarjeta (agrega color oscuro al texto para buena legibilidad)
-                st.markdown(
-                    f"""
-                    <div class="crm-neg-card" style="background:white;padding:1.3em;border-radius:12px;
-                    margin-bottom:0.6em; box-shadow:0 1px 8px #d0d6e1; color:black !important;">
-                        <b>Cliente:</b> {row.get('Cliente', '') if row.get('Cliente', '').strip() else 'N/A'} <br>
-                        <b>Empresa:</b> {row.get('Empresa', '') if row.get('Empresa', '').strip() else 'N/A'} <br>
-                        <b>Monto USD / $:</b> <span style="color:#2261b6">{row.get('Monto USD / $', '')}</span>
-                    </div>
-                    """, unsafe_allow_html=True
-                )
+        # --- EL BUSCADOR MÁGICO ---
+        busqueda = st.text_input("🔍 Buscar por Cliente o Empresa:", placeholder="Ej: Juan Perez o PRUEBA LTD...")
+        st.markdown("<br>", unsafe_allow_html=True) # Un pequeño espacio visual
+        
+        # Lógica de filtrado
+        if busqueda:
+            # Convertimos a texto por las dudas y buscamos coincidencias ignorando mayúsculas
+            df_filtrado = df[
+                df['Cliente'].astype(str).str.contains(busqueda, case=False, na=False) |
+                df['Empresa'].astype(str).str.contains(busqueda, case=False, na=False)
+            ]
+        else:
+            df_filtrado = df # Si no buscó nada, mostramos todo
+            
+        # Revisamos si la búsqueda encontró algo
+        if df_filtrado.empty:
+            st.warning(f"No encontramos ninguna negociación para: '{busqueda}'")
+        else:
+            # ACA EMPIEZA TU BUCLE ORIGINAL PERO CON LOS DATOS FILTRADOS
+            for idx, row in df_filtrado.iterrows():
+                with st.container():
+                    # Cabecera de tarjeta (agrega color oscuro al texto para buena legibilidad)
+                    st.markdown(
+                        f"""
+                        <div class="crm-neg-card" style="background:white;padding:1.3em;border-radius:12px;
+                        margin-bottom:0.6em; box-shadow:0 1px 8px #d0d6e1; color:black !important;">
+                            <b>Cliente:</b> {row.get('Cliente', '') if row.get('Cliente', '').strip() else 'N/A'} <br>
+                            <b>Empresa:</b> {row.get('Empresa', '') if row.get('Empresa', '').strip() else 'N/A'} <br>
+                            <b>Monto USD / $:</b> <span style="color:#2261b6">{row.get('Monto USD / $', '')}</span>
+                        </div>
+                        """, unsafe_allow_html=True
+                    )
                 # Expander con más detalles
                 cliente_str = row.get('Cliente', '')
                 with st.expander(f"Ver detalles de {cliente_str}", expanded=False):
