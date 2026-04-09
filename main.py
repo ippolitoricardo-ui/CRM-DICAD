@@ -8,10 +8,11 @@ st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 st.markdown(
     """
     <style>
-    /* Bloqueo agresivo de seleccion para la barra lateral y todo lo que tenga adentro */
-    [data-testid="stSidebar"], [data-testid="stSidebar"] * {
+    /* Bloqueo extremo para botones de radio y barra lateral */
+    .stRadio label, div[role="radiogroup"] label {
         user-select: none !important;
         -webkit-user-select: none !important;
+        cursor: pointer !important;
     }
     </style>
     """,
