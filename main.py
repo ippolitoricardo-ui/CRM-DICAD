@@ -8,11 +8,22 @@ st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 st.markdown(
     """
     <style>
-    /* Bloqueo extremo para botones de radio y barra lateral */
-    .stRadio label, div[role="radiogroup"] label {
+    /* 1. Bloquea la selección en todas las capas internas del menú de navegación */
+    div[data-testid="stRadio"] * {
         user-select: none !important;
         -webkit-user-select: none !important;
-        cursor: pointer !important;
+        -moz-user-select: none !important;
+        -ms-user-select: none !important;
+    }
+    
+    /* 2. OPCIÓN NUCLEAR: Si el navegador igual intenta sombrearlo, que lo pinte transparente */
+    div[data-testid="stRadio"] ::selection {
+        background-color: transparent !important;
+        color: inherit !important;
+    }
+    div[data-testid="stRadio"] ::-moz-selection {
+        background-color: transparent !important;
+        color: inherit !important;
     }
     </style>
     """,
