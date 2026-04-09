@@ -7,25 +7,20 @@ import pandas as pd
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 st.markdown(
     """
-    <style>
-    /* 1. Bloquea la selección en todas las capas internas del menú de navegación */
-    div[data-testid="stRadio"] * {
-        user-select: none !important;
-        -webkit-user-select: none !important;
-        -moz-user-select: none !important;
-        -ms-user-select: none !important;
-    }
-    
-    /* 2. OPCIÓN NUCLEAR: Si el navegador igual intenta sombrearlo, que lo pinte transparente */
-    div[data-testid="stRadio"] ::selection {
-        background-color: transparent !important;
-        color: inherit !important;
-    }
-    div[data-testid="stRadio"] ::-moz-selection {
-        background-color: transparent !important;
-        color: inherit !important;
-    }
-    </style>
+<style>
+        /* Escudo impenetrable contra el sombreado azul para TODA la barra lateral */
+        .stRadio, .stRadio *, [data-testid="stSidebar"], [data-testid="stSidebar"] * {
+            user-select: none !important;
+            -webkit-user-select: none !important;
+        }
+        
+        .stRadio ::selection, [data-testid="stSidebar"] ::selection {
+            background: transparent !important;
+        }
+        ::-moz-selection {
+            background: transparent !important;
+        }
+        </style>   
     """,
     unsafe_allow_html=True
 )
