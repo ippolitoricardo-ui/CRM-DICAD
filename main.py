@@ -3,6 +3,7 @@ from streamlit_gsheets import GSheetsConnection
 from datetime import datetime, date
 import pandas as pd
 from streamlit_option_menu import option_menu
+import plotly.express as px
 # --- CONFIGURACION DE PÁGINA Y ESTILOS ---
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
@@ -128,14 +129,43 @@ if section == "Negociaciones":
 
             st.markdown("<br>", unsafe_allow_html=True) # Pequeño espacio
 
-            # 3. EL GRÁFICO: Qué asesor tiene más negociaciones
-            st.markdown("#### 📈 Negociaciones por Asesor")
-            if 'Asesor' in df.columns:
-                # Cuenta automáticamente cuántos clientes tiene Ricardo, etc.
-                datos_grafico = df['Asesor'].value_counts()
-                st.bar_chart(datos_grafico)
+# 3. LOS GRÁFICOS (Torta y Barras)
+            st.markdown("---") # Línea separadora
+            st.markdown("#### 📈 Análisis de Negociaciones")
             
-            st.markdown("---") # Línea horizontal para separar el tablero de la búsqueda
+            col_graf1, col_graf2 = st.columns(2)
+            
+            with col_graf1:
+                # TRUCO: Extraer solo números de los USD
+                def extraer_usd(valor):
+                    texto = str(valor).upper()
+                    if "USD" in texto:
+                        numero = texto.replace("USD", "").replace(",", "").strip()
+                        try: return float(numero)
+                        except: return 0.0
+                    return 0.0
+                
+                # Aplicamos la limpieza y sumamos
+                df['Plata_USD'] = df['Monto USD / $'].apply(extraer_usd)
+                datos_torta = df.groupby('Estado_Nego')['Plata_USD'].sum().reset_index()
+                
+                # Dibujamos la Dona
+                fig_torta = px.pie(datos_torta, values='Plata_USD', names='Estado_Nego', 
+                                 title='Monto en Dólares por Estado',
+                                 hole=0.4,
+                                 color='Estado_Nego',
+                                 color_discrete_map={'Ganada':'#28a745', 'Perdida':'#dc3545', 'En Proceso':'#ffc107'})
+                fig_torta.update_traces(textinfo='percent+label')
+                st.plotly_chart(fig_torta, use_container_width=True)
+
+            with col_graf2:
+                if 'Asesor' in df.columns:
+                    datos_barras = df['Asesor'].value_counts().reset_index()
+                    datos_barras.columns = ['Asesor', 'Cantidad']
+                    fig_barras = px.bar(datos_barras, x='Asesor', y='Cantidad', 
+                                      title='Clientes activos por Asesor',
+                                      color='Asesor')
+                    st.plotly_chart(fig_barras, use_container_width=True) # Línea horizontal para separar el tablero de la búsqueda
 
 # --- EL BUSCADOR Y EL BOTÓN DE REFRESCO ---
             col_busq, col_refresco = st.columns([4, 1])
