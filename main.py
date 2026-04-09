@@ -7,25 +7,21 @@ import pandas as pd
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 st.markdown("""
     <style>
-    /* 1. Bloqueo GLOBAL del maldito sombreado azul */
-    * {
-        user-select: none !important;
-        -webkit-user-select: none !important;
-    }
-    /* 2. Excepción: Permitir escribir y seleccionar texto en los inputs y notas */
-    input, textarea {
-        user-select: text !important;
-        -webkit-user-select: text !important;
+    /* 1. Recuperar el color negro para que se lea el texto en las tarjetas blancas */
+    .crm-neg-card * {
+        color: black !important;
     }
     
-    /* 3. Tus colores corporativos DICAD */
-    .main {background: #f5f8fa;}
-    .css-1d391kg {background: #f5f8fa;}
-    .css-1v0mbdj {background: #2261b6;}
-    .sidebar .sidebar-content {background: #2261b6; color: #fff;}
-    .css-1aumxhk {color: #fff;}
-    .st-bt {background: #2261b6;}
-    .stButton>button {background-color: #2261b6; color: white; border-radius:7px;}
+    /* 2. Estilo limpio para los botones */
+    .stButton>button {
+        border-radius: 7px;
+        border: 1px solid #2261b6;
+    }
+    
+    /* 3. Bloqueo suave del texto azul en el menú lateral (sin romper la app) */
+    [data-testid="stSidebar"] label {
+        user-select: none !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
