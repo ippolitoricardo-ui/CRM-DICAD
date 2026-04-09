@@ -157,7 +157,6 @@ if section == "Negociaciones":
 if section == "Agregar Cliente":
     st.markdown("<h2>🙋‍♂️ Agregar nuevo cliente/negociación</h2>", unsafe_allow_html=True)
     
-    # Abrimos la "cápsula" del formulario. clear_on_submit limpia todo si hay éxito.
     with st.form("form_nuevo_cliente", clear_on_submit=True):
         col1, col2 = st.columns(2)
         
@@ -167,7 +166,15 @@ if section == "Agregar Cliente":
             ciudad = st.text_input("Ciudad")
             empresa = st.text_input("Empresa")
             telefono = st.text_input("Teléfono")
-            monto = st.text_input("Monto USD / $")
+            
+            # --- LA MEJORA DEL MONTO Y MONEDA ---
+            # Partimos este pedacito en dos columnas invisibles
+            col_monto, col_moneda = st.columns([2, 1]) 
+            with col_monto:
+                monto_valor = st.text_input("Monto numérico")
+            with col_moneda:
+                moneda = st.selectbox("Moneda", ["USD", "ARS"])
+                
             proxima_llamada = st.date_input("Próxima llamada")
             
         with col2:
@@ -180,7 +187,6 @@ if section == "Agregar Cliente":
             asesor = st.selectbox("Asesor comercial", ["Ricardo Ippolito", "Otro Asesor..."])
             
         st.markdown("<br>", unsafe_allow_html=True)
-        # El botón que dispara la acción de guardar
         submit_btn = st.form_submit_button("Agregar Negociación", type="primary")
         
         # --- LA LÓGICA DE GUARDADO ---
@@ -189,9 +195,16 @@ if section == "Agregar Cliente":
                 st.warning("⚠️ El Nombre del cliente es obligatorio para crear la ficha.")
             else:
                 with st.spinner("Guardando en la base de datos..."):
-                    # 1. Empaquetamos los datos en una nueva fila. 
-                    # IMPORTANTE: Las claves ("Cliente", "Profesion"...) tienen que coincidir exacto con tu lista COLUMNS
+                    
+                    # 1. Unimos la moneda elegida y el número (Ej: "USD 13000")
+                    monto_final = f"{moneda} {monto_valor}" if monto_valor.strip() != "" else ""
+                    
+                    # 2. Fabricamos la fecha de HOY en formato Día/Mes/Año
+                    fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+
+                    # 3. Empaquetamos AHORA SÍ todos los datos
                     nuevo_dato = pd.DataFrame([{
+                        "Creado": fecha_hoy,  # <- Acá va la fecha automática
                         "Cliente": cliente,
                         "Profesion": profesion,
                         "Direccion": direccion,
@@ -202,22 +215,18 @@ if section == "Agregar Cliente":
                         "Cargo": cargo,
                         "Telefono": telefono,
                         "N° Cotiz.": cotizacion,
-                        # Si te faltan columnas en tu lista original (como Notas o Proxima llamada), 
-                        # agregalas a la variable COLUMNS arriba de todo en tu código y sumalas acá.
+                        "Monto USD / $": monto_final, # <- Acá viaja el monto fusionado
+                        "Notas": notas,
+                        "Proxima llamada": proxima_llamada.strftime("%d/%m/%Y"),
+                        "Asesor": asesor
                     }])
                     
                     try:
-                        # 2. Descargamos la planilla actual
                         df_actual = conn.read(worksheet=worksheet_name, usecols=list(range(len(COLUMNS))), names=COLUMNS, ttl=5)
-                        
-                        # 3. Pegamos la nueva fila al final
                         df_actualizado = pd.concat([df_actual, nuevo_dato], ignore_index=True)
-                        
-                        # 4. Sobrescribimos el Google Sheets con la tabla actualizada
                         conn.update(worksheet=worksheet_name, data=df_actualizado)
-                        st.cache_data.clear() # Limpiamos la caché para que el buscador de la otra pestaña lo vea al instante
-                        
-                        st.success(f"✅ ¡La negociación con {cliente} se guardó exitosamente!")
+                        st.cache_data.clear() 
+                        st.success(f"✅ ¡La negociación con {cliente} se guardó exitosamente por {monto_final}!")
                     except Exception as e:
                         st.error(f"Hubo un error al intentar guardar: {e}")
 
