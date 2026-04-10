@@ -148,12 +148,24 @@ def get_data():
                 df[col] = ""
         df = df[COLUMNS]
         df = df.fillna('')
+        # Escudo de lectura: le sacamos la tilde invisible a los teléfonos que la tengan
+        df['Telefono'] = df['Telefono'].astype(str).str.lstrip("'")
     return df
+
+# --- MOTOR DE GUARDADO SEGURO (Evita el Formula Parse Error) ---
+def guardar_datos(df_a_guardar):
+    df_safe = df_a_guardar.copy()
+    # Si detecta que un teléfono arranca con +, le clava un apóstrofe para que Google no crea que es una fórmula
+    df_safe['Telefono'] = df_safe['Telefono'].astype(str).apply(
+        lambda x: f"'{x}" if x.startswith("+") else x
+    )
+    conn.update(worksheet=worksheet_name, data=df_safe, spreadsheet=GSHEET_URL)
+    st.cache_data.clear()
 
 def update_estado(indice, nuevo_estado):
     df_actual = get_data()
     df_actual.at[indice, 'Estado_Nego'] = nuevo_estado
-    conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)    
+    guardar_datos(df_actual)    
 
 def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_obj, fecha_anterior_str):
     df_actual = get_data()
@@ -178,7 +190,7 @@ def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_obj, fecha_a
         df_actual.at[indice, 'Notas'] = nota_final
     
     df_actual.at[indice, 'Proxima llamada'] = nueva_fecha_str
-    conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
+    guardar_datos(df_actual)
 
 def generar_numero_cotizacion(df):
     numeros = []
@@ -277,8 +289,7 @@ if section == "Potenciales":
                             df_act.at[idx, 'Ciudad'] = e_ciu
                             df_act.at[idx, 'Telefono'] = tel_final_edit
                             df_act.at[idx, 'Email'] = e_email
-                            conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
-                            st.cache_data.clear()
+                            guardar_datos(df_act)
                             st.rerun()
 
                 st.markdown("**📝 Gestión de Seguimiento (Historial):**")
@@ -299,7 +310,6 @@ if section == "Potenciales":
                         st.markdown("<br>", unsafe_allow_html=True)
                         if st.button("💾 Guardar Gestión", key=f"btn_nota_pot_{idx}", use_container_width=True):
                             guardar_gestion(idx, row.get('Notas', ''), nueva_nota, nueva_fecha, row.get('Proxima llamada', ''))
-                            st.cache_data.clear()
                             st.rerun()
                     
                     st.markdown("---")
@@ -321,8 +331,7 @@ if section == "Potenciales":
                         if not str(df_actual.at[idx, 'N° Cotiz.']).strip():
                             df_actual.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_actual)
                             
-                        conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
-                        st.cache_data.clear()
+                        guardar_datos(df_actual)
                         st.rerun()
                 else:
                     st.warning("🔒 Modo Lectura: Solo el Administrador o el Asesor asignado pueden editar este contacto.")
@@ -334,7 +343,6 @@ elif section == "Negociaciones":
     if df.empty:
         st.info("No hay negociaciones registradas todavía.")
     else:
-        # --- TOTALES GLOBALES EXCLUSIVOS PARA ADMINISTRADOR ---
         if st.session_state.usuario_actual == ADMINISTRADOR:
             st.markdown("### 🏢 TOTAL GLOBAL EMPRESA (Todos los Asesores)")
             df_global = df[(df['Estado_Nego'] != 'Potencial') & (df['Estado_Nego'] != '')]
@@ -348,7 +356,6 @@ elif section == "Negociaciones":
             cg3.metric("🤝 Total Negociaciones Históricas", len(df_global))
             st.markdown("---")
 
-        # --- VISTA FILTRADA ---
         st.markdown("### 👔 Vista por Asesor")
         asesor_seleccionado = st.selectbox("Filtrar métricas por Asesor:", lista_asesores, index=index_inicio)
 
@@ -479,8 +486,7 @@ elif section == "Negociaciones":
                             df_act.at[idx, 'Ciudad'] = e_ciu
                             df_act.at[idx, 'Telefono'] = tel_final_edit
                             df_act.at[idx, 'Email'] = e_email
-                            conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
-                            st.cache_data.clear()
+                            guardar_datos(df_act)
                             st.rerun()
 
                 col1, col2 = st.columns(2)
@@ -503,7 +509,6 @@ elif section == "Negociaciones":
                 st.markdown("---")
                 st.markdown("### 🗂️ Historial y Múltiples Cotizaciones")
                 
-                # Suma matemática de todo lo que tiene este cliente
                 cliente_email = str(row.get('Email', '')).strip().lower()
                 cliente_tel = str(row.get('Telefono', '')).replace(" ", "").replace("+", "")
                 
@@ -554,8 +559,7 @@ elif section == "Negociaciones":
                             }])
                             
                             df_actualizado = pd.concat([df_actual, nuevo_dato], ignore_index=True)
-                            conn.update(worksheet=worksheet_name, data=df_actualizado, spreadsheet=GSHEET_URL)
-                            st.cache_data.clear()
+                            guardar_datos(df_actualizado)
                             st.success("Nueva cotización agregada con éxito.")
                             st.rerun()
 
@@ -578,7 +582,6 @@ elif section == "Negociaciones":
                         st.markdown("<br>", unsafe_allow_html=True)
                         if st.button("💾 Guardar Gestión", key=f"btn_nota_neg_{idx}", use_container_width=True):
                             guardar_gestion(idx, row.get('Notas', ''), nueva_nota, nueva_fecha, row.get('Proxima llamada', ''))
-                            st.cache_data.clear()
                             st.rerun()
                     
                     st.markdown("---")
@@ -594,21 +597,19 @@ elif section == "Negociaciones":
                             df_actual = get_data()
                             df_actual.at[idx, 'Monto USD / $'] = edit_monto
                             df_actual.at[idx, 'Link_PDF'] = edit_link
-                            conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
-                            st.cache_data.clear()
+                            guardar_datos(df_actual)
                             st.success("¡Datos actualizados!")
                             st.rerun()
 
                     st.markdown("---")
-                    st.markdown("**💰 Resolución de esta Negociación:**")
+                    st.markdown("**💰 Resolución de la Negociación:**")
                     
                     if estado_actual in ['Ganada', 'Perdida']:
                         st.info(f"Esta negociación ya se encuentra cerrada como **{estado_actual.upper()}**.")
                         if st.button("🔄 Reabrir Negociación a 'En Proceso'", key=f"reabrir_{idx}"):
                             df_actual = get_data()
                             df_actual.at[idx, 'Estado_Nego'] = "En Proceso"
-                            conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
-                            st.cache_data.clear()
+                            guardar_datos(df_actual)
                             st.rerun()
                     else:
                         col_g, col_p = st.columns(2)
@@ -623,8 +624,7 @@ elif section == "Negociaciones":
                                     df_actual.at[idx, 'Notas'] = texto
                                 else:
                                     df_actual.at[idx, 'Notas'] = f"{nota_previa}\n{texto}"
-                                conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
-                                st.cache_data.clear()
+                                guardar_datos(df_actual)
                                 st.rerun()
                         with col_p:
                             if st.button("❌ Marcar como PERDIDA", key=f"perder_{idx}", use_container_width=True):
@@ -637,8 +637,7 @@ elif section == "Negociaciones":
                                     df_actual.at[idx, 'Notas'] = texto
                                 else:
                                     df_actual.at[idx, 'Notas'] = f"{nota_previa}\n{texto}"
-                                conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
-                                st.cache_data.clear()
+                                guardar_datos(df_actual)
                                 st.rerun()    
                 else:
                     st.warning("🔒 Modo Lectura: Solo el Administrador o el Asesor asignado pueden modificar o cerrar esta negociación.")
@@ -708,7 +707,6 @@ elif section == "Agregar Cliente":
             with st.spinner("Guardando y verificando duplicados..."):
                 df_actual_temp = conn.read(worksheet=worksheet_name, usecols=list(range(len(COLUMNS))), names=COLUMNS, ttl=5)
                 
-                # --- ESCUDO ANTI-DUPLICADOS ---
                 pais_final, cod_final = extraer_pais_codigo(pais_seleccionado)
                 if telefono.strip() == "" or telefono.startswith("+") or cod_final == "":
                     tel_final = telefono
@@ -766,8 +764,7 @@ elif section == "Agregar Cliente":
                     
                     try:
                         df_actualizado = pd.concat([df_actual_temp, nuevo_dato], ignore_index=True)
-                        conn.update(worksheet=worksheet_name, data=df_actualizado)
-                        st.cache_data.clear() 
+                        guardar_datos(df_actualizado)
                         st.session_state.form_key += 1
                         st.success(f"✅ ¡{cliente} guardado exitosamente!")
                         st.rerun()
@@ -862,6 +859,5 @@ elif section == "Calendario":
                             df_act.at[idx, 'Ciudad'] = e_ciu
                             df_act.at[idx, 'Telefono'] = tel_final_edit
                             df_act.at[idx, 'Email'] = e_email
-                            conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
-                            st.cache_data.clear()
+                            guardar_datos(df_act)
                             st.rerun()
