@@ -39,10 +39,10 @@ if not st.session_state.autenticado:
 
 # --- SIDEBAR ---
 with st.sidebar:
+    # Retiramos el "* {color: white}" para que los botones y el menú se vean bien
     st.markdown("""
         <style>
         [data-testid="stSidebar"] {background-color: #2E3E57 !important;}
-        [data-testid="stSidebar"] * {color: white !important;}
         </style>
     """, unsafe_allow_html=True)
     
@@ -54,17 +54,17 @@ with st.sidebar:
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True) 
     
-    # EL MENÚ
+    # EL MENÚ (Ahora con fondo gris claro y letras negras para resaltar)
     section = option_menu(
         menu_title=None, 
         options=["Potenciales", "Negociaciones", "Agregar Cliente", "Calendario"],
         icons=["person-bounding-box", "briefcase", "person-plus", "calendar-date"], 
         default_index=1,
         styles={
-            "container": {"padding": "0!important", "background-color": "transparent"},
-            "icon": {"color": "white", "font-size": "18px"}, 
-            "nav-link": {"color": "white", "font-size": "16px", "text-align": "left", "margin":"0px", "--hover-color": "#3373c8"},
-            "nav-link-selected": {"background-color": "#FF6600"},
+            "container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},
+            "icon": {"color": "#333333", "font-size": "18px"}, 
+            "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},
+            "nav-link-selected": {"background-color": "#FF6600", "color": "white"},
         }
     )
 
@@ -106,7 +106,6 @@ def update_estado(indice, nuevo_estado):
     df_actual.at[indice, 'Estado_Nego'] = nuevo_estado
     conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)    
 
-# NUEVA FUNCIÓN MEJORADA: Guarda la nota y reprograma la llamada al mismo tiempo
 def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_obj, fecha_anterior_str):
     df_actual = get_data()
     fecha_hoy = datetime.now().strftime("%d/%m/%Y")
@@ -114,18 +113,15 @@ def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_obj, fecha_a
 
     texto_agregado = ""
     
-    # Si escribió algo, lo agregamos
     if nueva_nota.strip():
         texto_agregado += f"[{fecha_hoy}] 📝 {nueva_nota}"
         
-    # Si cambió la fecha del calendario, lo dejamos asentado en el historial
     if nueva_fecha_str != str(fecha_anterior_str):
         if texto_agregado:
             texto_agregado += f" | 📅 Reprogramado para: {nueva_fecha_str}"
         else:
             texto_agregado = f"[{fecha_hoy}] 📅 Llamada reprogramada para: {nueva_fecha_str}"
 
-    # Guardamos en la columna Notas
     if texto_agregado:
         nota_previa = str(nota_existente)
         if nota_previa.strip() == "" or nota_previa.lower() == "nan":
@@ -134,7 +130,6 @@ def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_obj, fecha_a
             nota_final = f"{nota_previa}\n{texto_agregado}"
         df_actual.at[indice, 'Notas'] = nota_final
     
-    # Actualizamos la columna real de "Proxima llamada" para que limpie el calendario viejo
     df_actual.at[indice, 'Proxima llamada'] = nueva_fecha_str
     conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
 
@@ -177,11 +172,9 @@ if section == "Potenciales":
                 )
             
             with st.expander(f"Ver / Editar a {row.get('Cliente', '')}", expanded=False):
-                # GESTIÓN MEJORADA (Fecha + Nota)
                 st.markdown("**📝 Gestión de Seguimiento (Historial):**")
                 st.info(row.get('Notas', 'Sin notas previas.'))
                 
-                # Buscamos la fecha que tiene actualmente para ponerla por defecto
                 try:
                     fecha_actual_obj = datetime.strptime(str(row.get('Proxima llamada', '')).strip(), "%d/%m/%Y").date()
                 except:
@@ -200,7 +193,6 @@ if section == "Potenciales":
                         st.rerun()
                 
                 st.markdown("---")
-                # Botón de Promoción con Edición de Presupuesto
                 st.markdown("**🚀 Promover a Negociación Activa:**")
                 st.caption("Si ya le armaste un presupuesto, agregá los datos aquí antes de promoverlo.")
                 
@@ -271,7 +263,6 @@ elif section == "Negociaciones":
             df_grafico = df_tablero.copy()
             df_grafico['Plata_USD'] = df_grafico['Monto USD / $'].apply(extraer_usd)
             
-            # Solo graficar si hay datos
             if not df_grafico.empty and df_grafico['Plata_USD'].sum() > 0:
                 datos_torta = df_grafico.groupby('Estado_Nego')['Plata_USD'].sum().reset_index()
                 fig_torta = px.pie(datos_torta, values='Plata_USD', names='Estado_Nego', 
@@ -331,7 +322,6 @@ elif section == "Negociaciones":
                     st.markdown(f"**Asesor comercial:** {row.get('Asesor', '')}")
                     st.markdown(f"**Estado Actual:** {row.get('Estado_Nego', '')}")
                 
-                # --- GESTIÓN MEJORADA (Fecha + Nota) ---
                 st.markdown("---")
                 st.markdown("**📝 Gestión de Seguimiento (Historial):**")
                 st.info(row.get('Notas', 'Sin notas previas.'))
@@ -353,7 +343,6 @@ elif section == "Negociaciones":
                         st.cache_data.clear()
                         st.rerun()
                 
-                # Edición rápida de Monto y PDF
                 st.markdown("---")
                 st.markdown("**✏️ Actualizar Datos del Presupuesto:**")
                 col_e1, col_e2, col_e3 = st.columns([1.5, 2, 1])
@@ -369,6 +358,7 @@ elif section == "Negociaciones":
                         df_actual.at[idx, 'Link_PDF'] = edit_link
                         conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
                         st.cache_data.clear()
+                        st.success("¡Datos actualizados!")
                         st.rerun()
 
                 if 'Link_PDF' in row and str(row.get('Link_PDF', '')).strip() != "":
@@ -472,14 +462,21 @@ elif section == "Agregar Cliente":
 
 # --- PESTAÑA 4: CALENDARIO ---
 elif section == "Calendario":
-    st.markdown("## 📅 Agenda de Seguimientos")
-    
+    # Agregamos el botón de refresco al lado del título
+    col_t1, col_t2 = st.columns([4, 1])
+    with col_t1:
+        st.markdown("## 📅 Agenda de Seguimientos")
+    with col_t2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Actualizar Agenda", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+            
     df = get_data()
     
     if df.empty:
         st.info("No hay clientes registrados todavía.")
     else:
-        # En el calendario mostramos TANTO potenciales como negociaciones activas
         df_activos = df[df['Estado_Nego'].isin(['En Proceso', 'Potencial'])].copy()
         
         if df_activos.empty:
@@ -496,7 +493,6 @@ elif section == "Calendario":
                 cliente = row.get('Cliente', 'Desconocido')
                 estado = row.get('Estado_Nego', '')
                 
-                # Etiqueta visual para distinguir si es Potencial o Negociación
                 etiqueta = "🎯 Potencial" if estado == "Potencial" else "💼 En Proceso"
                 
                 with st.container():
