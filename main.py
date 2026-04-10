@@ -77,6 +77,14 @@ with st.sidebar:
             "nav-link-selected": {"background-color": "#FF6600"},
         }
     )
+    
+# --- BOTÓN DE CERRAR SESIÓN ---
+    st.markdown("---")
+    st.markdown(f"<div style='text-align: center; color: white; font-size: 14px; margin-bottom: 10px;'>👤 Asesor: <b>{st.session_state.usuario_actual}</b></div>", unsafe_allow_html=True)
+    if st.button("🚪 Cerrar Sesión", use_container_width=True):
+        st.session_state.autenticado = False
+        st.session_state.usuario_actual = None
+        st.rerun()    
 
 # --- CONEXIÓN A GOOGLE SHEETS ---
 GSHEET_URL = st.secrets.get("SHEET_URL", "https://docs.google.com/spreadsheets/d/___/edit#gid=0")  # Usa st.secrets!
