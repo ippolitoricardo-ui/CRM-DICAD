@@ -176,10 +176,23 @@ if section == "Potenciales":
                             st.rerun()
                 
                 st.markdown("---")
-                # Botón de Promoción
-                st.markdown("**¿El cliente ya pidió presupuesto?**")
-                if st.button("🚀 Promover a Negociación Activa", key=f"promover_{idx}", type="primary", use_container_width=True):
-                    update_estado(idx, "En Proceso")
+                # NUEVO: Botón de Promoción con Edición de Presupuesto
+                st.markdown("**🚀 Promover a Negociación Activa:**")
+                st.caption("Si ya le armaste un presupuesto, agregá los datos aquí antes de promoverlo.")
+                
+                col_p1, col_p2 = st.columns(2)
+                with col_p1:
+                    nuevo_monto_prom = st.text_input("Monto Cotizado (Ej: USD 5000)", key=f"prom_m_{idx}")
+                with col_p2:
+                    nuevo_link_prom = st.text_input("Link al PDF del Presupuesto", key=f"prom_l_{idx}")
+
+                if st.button("Confirmar y Promover a Negociación", key=f"promover_{idx}", type="primary", use_container_width=True):
+                    df_actual = get_data()
+                    df_actual.at[idx, 'Estado_Nego'] = "En Proceso"
+                    if nuevo_monto_prom.strip(): df_actual.at[idx, 'Monto USD / $'] = nuevo_monto_prom
+                    if nuevo_link_prom.strip(): df_actual.at[idx, 'Link_PDF'] = nuevo_link_prom
+                    
+                    conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
                     st.cache_data.clear()
                     st.rerun()
 
@@ -309,6 +322,24 @@ elif section == "Negociaciones":
                             agregar_nota_historial(idx, row.get('Notas', ''), nueva_nota)
                             st.cache_data.clear()
                             st.rerun()
+                
+                # NUEVO: Edición rápida de Monto y PDF
+                st.markdown("---")
+                st.markdown("**✏️ Actualizar Datos del Presupuesto:**")
+                col_e1, col_e2 = st.columns(2)
+                with col_e1:
+                    edit_monto = st.text_input("Monto Cotizado", value=str(row.get('Monto USD / $', '')), key=f"edit_m_{idx}")
+                with col_e2:
+                    edit_link = st.text_input("Link al PDF", value=str(row.get('Link_PDF', '')), key=f"edit_l_{idx}")
+                    
+                if st.button("💾 Guardar Cambios de Presupuesto", key=f"save_edit_{idx}"):
+                    df_actual = get_data()
+                    df_actual.at[idx, 'Monto USD / $'] = edit_monto
+                    df_actual.at[idx, 'Link_PDF'] = edit_link
+                    conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
+                    st.cache_data.clear()
+                    st.success("¡Datos actualizados!")
+                    st.rerun()
 
                 if 'Link_PDF' in row and str(row.get('Link_PDF', '')).strip() != "":
                     st.markdown("---")
