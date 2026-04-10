@@ -233,7 +233,7 @@ if section == "Negociaciones":
                         st.markdown(f"**Notas:** {row.get('Notas', '')}")
                         proxima_llamada = row.get('Proxima llamada', '')
                         st.markdown(f"**Próxima llamada:** {proxima_llamada if proxima_llamada else 'N/A'}")
-                        st.markdown(f"**Asesor comercial:** {row.get('Asesor comercial', '')}")
+                        st.markdown(f"**Asesor comercial:** {row.get('Asesor', '')}")
                         creado = row.get('Creado', '')
                         st.markdown(f"**Creado:** {creado if creado else 'N/A'}")
                     # --- 1. BOTÓN PARA VER EL PRESUPUESTO ---
