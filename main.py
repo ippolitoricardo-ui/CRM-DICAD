@@ -10,6 +10,7 @@ st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
 # --- 1. BASE DE DATOS DE USUARIOS (Ocultas por seguridad) ---
 USUARIOS = st.secrets["passwords"]
+ADMINISTRADOR = "Ricardo Ippolito" # El usuario con acceso total
 
 # --- 2. GESTIÓN DE SESIÓN (LOGIN) ---
 if 'autenticado' not in st.session_state:
@@ -67,7 +68,8 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.markdown(f"<div style='text-align: center; color: white; font-size: 14px; margin-bottom: 10px;'>👤 Asesor: <b>{st.session_state.usuario_actual}</b></div>", unsafe_allow_html=True)
+    rol_badge = "👑 Admin" if st.session_state.usuario_actual == ADMINISTRADOR else "💼 Asesor"
+    st.markdown(f"<div style='text-align: center; color: white; font-size: 14px; margin-bottom: 10px;'>{rol_badge}: <b>{st.session_state.usuario_actual}</b></div>", unsafe_allow_html=True)
     if st.button("🚪 Cerrar Sesión", use_container_width=True):
         st.session_state.autenticado = False
         st.session_state.usuario_actual = None
@@ -137,7 +139,6 @@ try:
 except:
     index_inicio = 0
 
-
 # --- PESTAÑA 1: POTENCIALES (LEADS) ---
 if section == "Potenciales":
     st.markdown("## 🎯 Clientes Potenciales (Aún sin Presupuesto)")
@@ -156,6 +157,9 @@ if section == "Potenciales":
         st.markdown("---")
 
         for idx, row in df_potenciales.iterrows():
+            # LÓGICA DE PERMISOS
+            puede_editar = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
+
             with st.container():
                 st.markdown(
                     f"""
@@ -168,67 +172,70 @@ if section == "Potenciales":
                 )
             
             with st.expander(f"Ver / Editar a {row.get('Cliente', '')}", expanded=False):
-                # --- NUEVO: EDICIÓN COMPLETA DEL CONTACTO ---
-                with st.expander("⚙️ Editar Ficha del Cliente", expanded=False):
-                    ce1, ce2 = st.columns(2)
-                    with ce1:
-                        e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_pot_{idx}")
-                        e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_pot_{idx}")
-                        e_tel = st.text_input("Teléfono", value=row.get('Telefono',''), key=f"e_tel_pot_{idx}")
-                    with ce2:
-                        e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_pot_{idx}")
-                        e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_pot_{idx}")
-                        e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_pot_{idx}")
-                    if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_pot_{idx}"):
-                        df_act = get_data()
-                        df_act.at[idx, 'Cliente'] = e_cli
-                        df_act.at[idx, 'Empresa'] = e_emp
-                        df_act.at[idx, 'Telefono'] = e_tel
-                        df_act.at[idx, 'Profesion'] = e_prof
-                        df_act.at[idx, 'Pais'] = e_pais
-                        df_act.at[idx, 'N° Cotiz.'] = e_cot
-                        conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
-                        st.cache_data.clear()
-                        st.rerun()
+                if puede_editar:
+                    with st.expander("⚙️ Editar Ficha del Cliente", expanded=False):
+                        ce1, ce2 = st.columns(2)
+                        with ce1:
+                            e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_pot_{idx}")
+                            e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_pot_{idx}")
+                            e_tel = st.text_input("Teléfono", value=row.get('Telefono',''), key=f"e_tel_pot_{idx}")
+                        with ce2:
+                            e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_pot_{idx}")
+                            e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_pot_{idx}")
+                            e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_pot_{idx}")
+                        if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_pot_{idx}"):
+                            df_act = get_data()
+                            df_act.at[idx, 'Cliente'] = e_cli
+                            df_act.at[idx, 'Empresa'] = e_emp
+                            df_act.at[idx, 'Telefono'] = e_tel
+                            df_act.at[idx, 'Profesion'] = e_prof
+                            df_act.at[idx, 'Pais'] = e_pais
+                            df_act.at[idx, 'N° Cotiz.'] = e_cot
+                            conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
+                            st.cache_data.clear()
+                            st.rerun()
 
                 st.markdown("**📝 Gestión de Seguimiento (Historial):**")
                 st.info(row.get('Notas', 'Sin notas previas.'))
                 
-                try:
-                    fecha_actual_obj = datetime.strptime(str(row.get('Proxima llamada', '')).strip(), "%d/%m/%Y").date()
-                except:
-                    fecha_actual_obj = date.today()
-                
-                col_n1, col_n2, col_n3 = st.columns([1.2, 2.5, 1])
-                with col_n1:
-                    nueva_fecha = st.date_input("📅 Reprogramar llamada", value=fecha_actual_obj, key=f"fecha_pot_{idx}")
-                with col_n2:
-                    nueva_nota = st.text_input("Agregar nota de hoy:", key=f"nota_pot_{idx}", placeholder="Ej: Me pidió que lo llame el martes...")
-                with col_n3:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("💾 Guardar Gestión", key=f"btn_nota_pot_{idx}", use_container_width=True):
-                        guardar_gestion(idx, row.get('Notas', ''), nueva_nota, nueva_fecha, row.get('Proxima llamada', ''))
+                if puede_editar:
+                    try:
+                        fecha_actual_obj = datetime.strptime(str(row.get('Proxima llamada', '')).strip(), "%d/%m/%Y").date()
+                    except:
+                        fecha_actual_obj = date.today()
+                    
+                    col_n1, col_n2, col_n3 = st.columns([1.2, 2.5, 1])
+                    with col_n1:
+                        nueva_fecha = st.date_input("📅 Reprogramar llamada", value=fecha_actual_obj, key=f"fecha_pot_{idx}")
+                    with col_n2:
+                        nueva_nota = st.text_input("Agregar nota de hoy:", key=f"nota_pot_{idx}", placeholder="Ej: Me pidió que lo llame el martes...")
+                    with col_n3:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("💾 Guardar Gestión", key=f"btn_nota_pot_{idx}", use_container_width=True):
+                            guardar_gestion(idx, row.get('Notas', ''), nueva_nota, nueva_fecha, row.get('Proxima llamada', ''))
+                            st.cache_data.clear()
+                            st.rerun()
+                    
+                    st.markdown("---")
+                    st.markdown("**🚀 Promover a Negociación Activa:**")
+                    st.caption("Si ya le armaste un presupuesto, agregá los datos aquí antes de promoverlo.")
+                    
+                    col_p1, col_p2 = st.columns(2)
+                    with col_p1:
+                        nuevo_monto_prom = st.text_input("Monto Cotizado (Ej: USD 5000)", key=f"prom_m_{idx}")
+                    with col_p2:
+                        nuevo_link_prom = st.text_input("Link al PDF del Presupuesto", key=f"prom_l_{idx}")
+
+                    if st.button("Confirmar y Promover a Negociación", key=f"promover_{idx}", type="primary", use_container_width=True):
+                        df_actual = get_data()
+                        df_actual.at[idx, 'Estado_Nego'] = "En Proceso"
+                        if nuevo_monto_prom.strip(): df_actual.at[idx, 'Monto USD / $'] = nuevo_monto_prom
+                        if nuevo_link_prom.strip(): df_actual.at[idx, 'Link_PDF'] = nuevo_link_prom
+                        conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
                         st.cache_data.clear()
                         st.rerun()
-                
-                st.markdown("---")
-                st.markdown("**🚀 Promover a Negociación Activa:**")
-                st.caption("Si ya le armaste un presupuesto, agregá los datos aquí antes de promoverlo.")
-                
-                col_p1, col_p2 = st.columns(2)
-                with col_p1:
-                    nuevo_monto_prom = st.text_input("Monto Cotizado (Ej: USD 5000)", key=f"prom_m_{idx}")
-                with col_p2:
-                    nuevo_link_prom = st.text_input("Link al PDF del Presupuesto", key=f"prom_l_{idx}")
-
-                if st.button("Confirmar y Promover a Negociación", key=f"promover_{idx}", type="primary", use_container_width=True):
-                    df_actual = get_data()
-                    df_actual.at[idx, 'Estado_Nego'] = "En Proceso"
-                    if nuevo_monto_prom.strip(): df_actual.at[idx, 'Monto USD / $'] = nuevo_monto_prom
-                    if nuevo_link_prom.strip(): df_actual.at[idx, 'Link_PDF'] = nuevo_link_prom
-                    conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
-                    st.cache_data.clear()
-                    st.rerun()
+                else:
+                    st.warning("🔒 Modo Lectura: Solo el Administrador o el Asesor asignado pueden editar este contacto.")
 
 # --- PESTAÑA 2: NEGOCIACIONES ---
 elif section == "Negociaciones":
@@ -318,6 +325,8 @@ elif section == "Negociaciones":
 
         for idx, row in df_filtrado.iterrows():
             estado_actual = row.get('Estado_Nego', 'En Proceso')
+            puede_editar = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
+
             if estado_actual == 'Ganada':
                 borde_color = "#28a745"
                 badge = "<span style='float:right; background-color:#28a745; color:white; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:bold;'>✅ GANADA</span>"
@@ -342,28 +351,28 @@ elif section == "Negociaciones":
                 )
 
             with st.expander(f"Ver detalles de {row.get('Cliente', '')}", expanded=False):
-                # --- NUEVO: EDICIÓN COMPLETA DEL CONTACTO ---
-                with st.expander("⚙️ Editar Ficha del Cliente", expanded=False):
-                    ce1, ce2 = st.columns(2)
-                    with ce1:
-                        e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_neg_{idx}")
-                        e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_neg_{idx}")
-                        e_tel = st.text_input("Teléfono", value=row.get('Telefono',''), key=f"e_tel_neg_{idx}")
-                    with ce2:
-                        e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_neg_{idx}")
-                        e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_neg_{idx}")
-                        e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_neg_{idx}")
-                    if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_neg_{idx}"):
-                        df_act = get_data()
-                        df_act.at[idx, 'Cliente'] = e_cli
-                        df_act.at[idx, 'Empresa'] = e_emp
-                        df_act.at[idx, 'Telefono'] = e_tel
-                        df_act.at[idx, 'Profesion'] = e_prof
-                        df_act.at[idx, 'Pais'] = e_pais
-                        df_act.at[idx, 'N° Cotiz.'] = e_cot
-                        conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
-                        st.cache_data.clear()
-                        st.rerun()
+                if puede_editar:
+                    with st.expander("⚙️ Editar Ficha del Cliente", expanded=False):
+                        ce1, ce2 = st.columns(2)
+                        with ce1:
+                            e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_neg_{idx}")
+                            e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_neg_{idx}")
+                            e_tel = st.text_input("Teléfono", value=row.get('Telefono',''), key=f"e_tel_neg_{idx}")
+                        with ce2:
+                            e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_neg_{idx}")
+                            e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_neg_{idx}")
+                            e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_neg_{idx}")
+                        if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_neg_{idx}"):
+                            df_act = get_data()
+                            df_act.at[idx, 'Cliente'] = e_cli
+                            df_act.at[idx, 'Empresa'] = e_emp
+                            df_act.at[idx, 'Telefono'] = e_tel
+                            df_act.at[idx, 'Profesion'] = e_prof
+                            df_act.at[idx, 'Pais'] = e_pais
+                            df_act.at[idx, 'N° Cotiz.'] = e_cot
+                            conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
+                            st.cache_data.clear()
+                            st.rerun()
 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -375,97 +384,98 @@ elif section == "Negociaciones":
                     st.markdown(f"**Asesor comercial:** {row.get('Asesor', '')}")
                     st.markdown(f"**Estado Actual:** {row.get('Estado_Nego', '')}")
                 
+                if 'Link_PDF' in row and str(row.get('Link_PDF', '')).strip() != "":
+                    st.link_button("📄 Abrir Presupuesto PDF", row['Link_PDF'], use_container_width=True)
+
                 st.markdown("---")
                 st.markdown("**📝 Gestión de Seguimiento (Historial):**")
                 st.info(row.get('Notas', 'Sin notas previas.'))
                 
-                try:
-                    fecha_actual_obj = datetime.strptime(str(row.get('Proxima llamada', '')).strip(), "%d/%m/%Y").date()
-                except:
-                    fecha_actual_obj = date.today()
-                
-                col_n1, col_n2, col_n3 = st.columns([1.2, 2.5, 1])
-                with col_n1:
-                    nueva_fecha = st.date_input("📅 Reprogramar llamada", value=fecha_actual_obj, key=f"fecha_neg_{idx}")
-                with col_n2:
-                    nueva_nota = st.text_input("Agregar nota de hoy:", key=f"nota_neg_{idx}", placeholder="Ej: Quedó en ver el PDF...")
-                with col_n3:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("💾 Guardar Gestión", key=f"btn_nota_neg_{idx}", use_container_width=True):
-                        guardar_gestion(idx, row.get('Notas', ''), nueva_nota, nueva_fecha, row.get('Proxima llamada', ''))
-                        st.cache_data.clear()
-                        st.rerun()
-                
-                st.markdown("---")
-                st.markdown("**✏️ Actualizar Datos del Presupuesto:**")
-                col_e1, col_e2, col_e3 = st.columns([1.5, 2, 1])
-                with col_e1:
-                    edit_monto = st.text_input("Monto Cotizado", value=str(row.get('Monto USD / $', '')), key=f"edit_m_{idx}")
-                with col_e2:
-                    edit_link = st.text_input("Link al PDF", value=str(row.get('Link_PDF', '')), key=f"edit_l_{idx}")
-                with col_e3:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("💾 Actualizar", key=f"save_edit_{idx}"):
-                        df_actual = get_data()
-                        df_actual.at[idx, 'Monto USD / $'] = edit_monto
-                        df_actual.at[idx, 'Link_PDF'] = edit_link
-                        conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
-                        st.cache_data.clear()
-                        st.success("¡Datos actualizados!")
-                        st.rerun()
-
-                if 'Link_PDF' in row and str(row.get('Link_PDF', '')).strip() != "":
+                if puede_editar:
+                    try:
+                        fecha_actual_obj = datetime.strptime(str(row.get('Proxima llamada', '')).strip(), "%d/%m/%Y").date()
+                    except:
+                        fecha_actual_obj = date.today()
+                    
+                    col_n1, col_n2, col_n3 = st.columns([1.2, 2.5, 1])
+                    with col_n1:
+                        nueva_fecha = st.date_input("📅 Reprogramar llamada", value=fecha_actual_obj, key=f"fecha_neg_{idx}")
+                    with col_n2:
+                        nueva_nota = st.text_input("Agregar nota de hoy:", key=f"nota_neg_{idx}", placeholder="Ej: Quedó en ver el PDF...")
+                    with col_n3:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("💾 Guardar Gestión", key=f"btn_nota_neg_{idx}", use_container_width=True):
+                            guardar_gestion(idx, row.get('Notas', ''), nueva_nota, nueva_fecha, row.get('Proxima llamada', ''))
+                            st.cache_data.clear()
+                            st.rerun()
+                    
                     st.markdown("---")
-                    st.link_button("📄 Abrir Presupuesto PDF", row['Link_PDF'], use_container_width=True)
-                
-                st.markdown("---")
-                st.markdown("**💰 Resolución de la Negociación:**")
-                
-                if estado_actual in ['Ganada', 'Perdida']:
-                    st.info(f"Esta negociación ya se encuentra cerrada como **{estado_actual.upper()}**.")
-                    if st.button("🔄 Reabrir Negociación a 'En Proceso'", key=f"reabrir_{idx}"):
-                        df_actual = get_data()
-                        df_actual.at[idx, 'Estado_Nego'] = "En Proceso"
-                        conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
-                        st.cache_data.clear()
-                        st.rerun()
-                else:
-                    col_g, col_p = st.columns(2)
-                    with col_g:
-                        if st.button("✅ Marcar como GANADA", key=f"ganar_{idx}", use_container_width=True):
+                    st.markdown("**✏️ Actualizar Datos del Presupuesto:**")
+                    col_e1, col_e2, col_e3 = st.columns([1.5, 2, 1])
+                    with col_e1:
+                        edit_monto = st.text_input("Monto Cotizado", value=str(row.get('Monto USD / $', '')), key=f"edit_m_{idx}")
+                    with col_e2:
+                        edit_link = st.text_input("Link al PDF", value=str(row.get('Link_PDF', '')), key=f"edit_l_{idx}")
+                    with col_e3:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("💾 Actualizar", key=f"save_edit_{idx}"):
                             df_actual = get_data()
-                            df_actual.at[idx, 'Estado_Nego'] = "Ganada"
-                            fecha_hoy = datetime.now().strftime("%d/%m/%Y")
-                            texto = f"[{fecha_hoy}] 🏆 NEGOCIACIÓN CERRADA COMO GANADA"
-                            nota_previa = str(df_actual.at[idx, 'Notas'])
-                            if nota_previa.strip() == "" or nota_previa.lower() == "nan":
-                                df_actual.at[idx, 'Notas'] = texto
-                            else:
-                                df_actual.at[idx, 'Notas'] = f"{nota_previa}\n{texto}"
+                            df_actual.at[idx, 'Monto USD / $'] = edit_monto
+                            df_actual.at[idx, 'Link_PDF'] = edit_link
+                            conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
+                            st.cache_data.clear()
+                            st.success("¡Datos actualizados!")
+                            st.rerun()
+
+                    st.markdown("---")
+                    st.markdown("**💰 Resolución de la Negociación:**")
+                    
+                    if estado_actual in ['Ganada', 'Perdida']:
+                        st.info(f"Esta negociación ya se encuentra cerrada como **{estado_actual.upper()}**.")
+                        if st.button("🔄 Reabrir Negociación a 'En Proceso'", key=f"reabrir_{idx}"):
+                            df_actual = get_data()
+                            df_actual.at[idx, 'Estado_Nego'] = "En Proceso"
                             conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
                             st.cache_data.clear()
                             st.rerun()
-                    with col_p:
-                        if st.button("❌ Marcar como PERDIDA", key=f"perder_{idx}", use_container_width=True):
-                            df_actual = get_data()
-                            df_actual.at[idx, 'Estado_Nego'] = "Perdida"
-                            fecha_hoy = datetime.now().strftime("%d/%m/%Y")
-                            texto = f"[{fecha_hoy}] ❌ NEGOCIACIÓN MARCADA COMO PERDIDA"
-                            nota_previa = str(df_actual.at[idx, 'Notas'])
-                            if nota_previa.strip() == "" or nota_previa.lower() == "nan":
-                                df_actual.at[idx, 'Notas'] = texto
-                            else:
-                                df_actual.at[idx, 'Notas'] = f"{nota_previa}\n{texto}"
-                            conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
-                            st.cache_data.clear()
-                            st.rerun()    
+                    else:
+                        col_g, col_p = st.columns(2)
+                        with col_g:
+                            if st.button("✅ Marcar como GANADA", key=f"ganar_{idx}", use_container_width=True):
+                                df_actual = get_data()
+                                df_actual.at[idx, 'Estado_Nego'] = "Ganada"
+                                fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+                                texto = f"[{fecha_hoy}] 🏆 NEGOCIACIÓN CERRADA COMO GANADA"
+                                nota_previa = str(df_actual.at[idx, 'Notas'])
+                                if nota_previa.strip() == "" or nota_previa.lower() == "nan":
+                                    df_actual.at[idx, 'Notas'] = texto
+                                else:
+                                    df_actual.at[idx, 'Notas'] = f"{nota_previa}\n{texto}"
+                                conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
+                                st.cache_data.clear()
+                                st.rerun()
+                        with col_p:
+                            if st.button("❌ Marcar como PERDIDA", key=f"perder_{idx}", use_container_width=True):
+                                df_actual = get_data()
+                                df_actual.at[idx, 'Estado_Nego'] = "Perdida"
+                                fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+                                texto = f"[{fecha_hoy}] ❌ NEGOCIACIÓN MARCADA COMO PERDIDA"
+                                nota_previa = str(df_actual.at[idx, 'Notas'])
+                                if nota_previa.strip() == "" or nota_previa.lower() == "nan":
+                                    df_actual.at[idx, 'Notas'] = texto
+                                else:
+                                    df_actual.at[idx, 'Notas'] = f"{nota_previa}\n{texto}"
+                                conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
+                                st.cache_data.clear()
+                                st.rerun()    
+                else:
+                    st.warning("🔒 Modo Lectura: Solo el Administrador o el Asesor asignado pueden modificar o cerrar esta negociación.")
 
-# --- PESTAÑA 3: AGREGAR CLIENTE (SIN AUTO-ENTER) ---
+# --- PESTAÑA 3: AGREGAR CLIENTE ---
 elif section == "Agregar Cliente":
     st.markdown("<h2>🙋‍♂️ Cargar nuevo Contacto</h2>", unsafe_allow_html=True)
     st.info("💡 Consejo: Completa los datos y haz clic en 'Guardar'. (Si presionas la tecla ENTER por error, la página se recargará por seguridad para evitar guardar datos incompletos).")
     
-    # Sistema de reset de campos para anular el bug del ENTER
     if 'form_key' not in st.session_state:
         st.session_state.form_key = 0
     fk = st.session_state.form_key
@@ -502,7 +512,13 @@ elif section == "Agregar Cliente":
             index_vendedor = vendedores.index(st.session_state.usuario_actual)
         except:
             index_vendedor = 0
-        asesor = st.selectbox("Asesor asignado", vendedores, index=index_vendedor, key=f"ase_{fk}")
+        
+        # Si es Administrador puede asignar el cliente a cualquiera, si no, se bloquea en su nombre
+        if st.session_state.usuario_actual == ADMINISTRADOR:
+            asesor = st.selectbox("Asesor asignado", vendedores, index=index_vendedor, key=f"ase_{fk}")
+        else:
+            st.markdown(f"**Asesor asignado:** {st.session_state.usuario_actual}")
+            asesor = st.session_state.usuario_actual
         
     st.markdown("---")
     link_pdf = st.text_input("🔗 Link al Presupuesto", placeholder="Enlace a Drive/Dropbox...", key=f"pdf_{fk}")    
@@ -541,7 +557,6 @@ elif section == "Agregar Cliente":
                     conn.update(worksheet=worksheet_name, data=df_actualizado)
                     st.cache_data.clear() 
                     
-                    # MAGIA: Esto hace que se borren todos los campos para cargar el siguiente
                     st.session_state.form_key += 1
                     
                     st.success(f"✅ ¡{cliente} guardado exitosamente!")
@@ -580,6 +595,7 @@ elif section == "Calendario":
                 fecha_texto = row.get('Proxima llamada', 'Sin fecha')
                 cliente = row.get('Cliente', 'Desconocido')
                 estado = row.get('Estado_Nego', '')
+                puede_editar = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
                 
                 etiqueta = "🎯 Potencial" if estado == "Potencial" else "💼 En Proceso"
                 
@@ -594,25 +610,25 @@ elif section == "Calendario":
                         unsafe_allow_html=True
                     )
                 
-                # --- NUEVO: EDICIÓN DESDE EL CALENDARIO ---
-                with st.expander(f"⚙️ Editar / Ver Ficha de {cliente}", expanded=False):
-                    ce1, ce2 = st.columns(2)
-                    with ce1:
-                        e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_cal_{idx}")
-                        e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_cal_{idx}")
-                        e_tel = st.text_input("Teléfono", value=row.get('Telefono',''), key=f"e_tel_cal_{idx}")
-                    with ce2:
-                        e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_cal_{idx}")
-                        e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_cal_{idx}")
-                        e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_cal_{idx}")
-                    if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_cal_{idx}"):
-                        df_act = get_data()
-                        df_act.at[idx, 'Cliente'] = e_cli
-                        df_act.at[idx, 'Empresa'] = e_emp
-                        df_act.at[idx, 'Telefono'] = e_tel
-                        df_act.at[idx, 'Profesion'] = e_prof
-                        df_act.at[idx, 'Pais'] = e_pais
-                        df_act.at[idx, 'N° Cotiz.'] = e_cot
-                        conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
-                        st.cache_data.clear()
-                        st.rerun()
+                if puede_editar:
+                    with st.expander(f"⚙️ Editar Ficha de {cliente}", expanded=False):
+                        ce1, ce2 = st.columns(2)
+                        with ce1:
+                            e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_cal_{idx}")
+                            e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_cal_{idx}")
+                            e_tel = st.text_input("Teléfono", value=row.get('Telefono',''), key=f"e_tel_cal_{idx}")
+                        with ce2:
+                            e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_cal_{idx}")
+                            e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_cal_{idx}")
+                            e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_cal_{idx}")
+                        if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_cal_{idx}"):
+                            df_act = get_data()
+                            df_act.at[idx, 'Cliente'] = e_cli
+                            df_act.at[idx, 'Empresa'] = e_emp
+                            df_act.at[idx, 'Telefono'] = e_tel
+                            df_act.at[idx, 'Profesion'] = e_prof
+                            df_act.at[idx, 'Pais'] = e_pais
+                            df_act.at[idx, 'N° Cotiz.'] = e_cot
+                            conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
+                            st.cache_data.clear()
+                            st.rerun()
