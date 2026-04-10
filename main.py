@@ -4,10 +4,11 @@ from datetime import datetime, date
 import pandas as pd
 from streamlit_option_menu import option_menu
 import plotly.express as px
+
 # --- CONFIGURACION DE PÁGINA Y ESTILOS ---
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
-# --- 1. BASE DE DATOS DE USUARIOS ---
+# --- 1. BASE DE DATOS DE USUARIOS (Ocultas por seguridad) ---
 USUARIOS = st.secrets["passwords"]
 
 # --- 2. GESTIÓN DE SESIÓN (LOGIN) ---
@@ -38,33 +39,27 @@ if not st.session_state.autenticado:
 
 # --- SIDEBAR ---
 with st.sidebar:
-    # 1. FORZAR EL FONDO AZUL DICAD Y LETRAS BLANCAS
     st.markdown("""
         <style>
-        [data-testid="stSidebar"] {
-            background-color: #2E3E57 !important;
-        }
-        [data-testid="stSidebar"] * {
-            color: white !important;
-        }
+        [data-testid="stSidebar"] {background-color: #2E3E57 !important;}
+        [data-testid="stSidebar"] * {color: white !important;}
         </style>
     """, unsafe_allow_html=True)
     
-    # 2. LOGO MÁS GRANDE Y CENTRADO PERFECTO (usando columnas)
-    st.write("") # Un pequeño espacio arriba
-    col1, col2, col3 = st.columns([1, 4, 1]) # Crea 3 columnas (la del medio es más ancha)
+    st.write("") 
+    col1, col2, col3 = st.columns([1, 4, 1]) 
     with col2:
-        st.image("logo_dicad.png", use_column_width=True) # La imagen se adapta a la columna central
+        st.image("logo_dicad.png", use_column_width=True) 
         
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p>", unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True) # Un espacio antes del menú
+    st.markdown("<br>", unsafe_allow_html=True) 
     
-    # EL NUEVO MENÚ PROFESIONAL
+    # EL MENÚ CON LA NUEVA PESTAÑA "POTENCIALES"
     section = option_menu(
         menu_title=None, 
-        options=["Negociaciones", "Agregar Cliente", "Calendario"],
-        icons=["briefcase", "person-plus", "calendar-date"], 
-        default_index=0,
+        options=["Potenciales", "Negociaciones", "Agregar Cliente", "Calendario"],
+        icons=["person-bounding-box", "briefcase", "person-plus", "calendar-date"], 
+        default_index=1,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "white", "font-size": "18px"}, 
@@ -72,308 +67,339 @@ with st.sidebar:
             "nav-link-selected": {"background-color": "#FF6600"},
         }
     )
-    
-# --- BOTÓN DE CERRAR SESIÓN ---
+
     st.markdown("---")
     st.markdown(f"<div style='text-align: center; color: white; font-size: 14px; margin-bottom: 10px;'>👤 Asesor: <b>{st.session_state.usuario_actual}</b></div>", unsafe_allow_html=True)
     if st.button("🚪 Cerrar Sesión", use_container_width=True):
         st.session_state.autenticado = False
         st.session_state.usuario_actual = None
-        st.rerun()    
+        st.rerun()
 
 # --- CONEXIÓN A GOOGLE SHEETS ---
-GSHEET_URL = st.secrets.get("SHEET_URL", "https://docs.google.com/spreadsheets/d/___/edit#gid=0")  # Usa st.secrets!
+GSHEET_URL = st.secrets.get("SHEET_URL", "https://docs.google.com/spreadsheets/d/___/edit#gid=0")
 
-# Usando el estándar oficial de st.connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 worksheet_name = "Central Negociaciones"
 
-# --- COLUMNAS REALES DE LA GOOGLE SHEET ---
 COLUMNS = [
-    "Cliente",
-    "Profesion",
-    "Direccion",
-    "Pais",
-    "Ciudad",
-    "Estado /Prov.",
-    "Empresa",
-    "Cargo",
-    "Telefono",
-    "N° Cotiz.",
-    "Monto USD / $",
-    "Notas",
-    "Proxima llamada",
-    "Creado",
-    "Asesor",
-    "Estado_Nego",
-    "Link_PDF"
+    "Cliente", "Profesion", "Direccion", "Pais", "Ciudad", "Estado /Prov.", "Empresa", 
+    "Cargo", "Telefono", "N° Cotiz.", "Monto USD / $", "Notas", "Proxima llamada", 
+    "Creado", "Asesor", "Estado_Nego", "Link_PDF"
 ]
 
-VENDEDORES = ["Alice", "Bob", "Carlos", "Diana"]  # Puedes modificarlo según tus asesores reales
-
-# --- CARGA Y GUARDADO DE DATOS ---
 @st.cache_data(ttl=60)
 def get_data():
     df = conn.read(spreadsheet=GSHEET_URL)
     if df is None:
         df = pd.DataFrame(columns=COLUMNS)
     else:
-        df.columns = df.columns.str.strip()   # Elimina espacios en los nombres de columnas
-        # Si faltan columnas en la Sheet, agrégalas vacías:
+        df.columns = df.columns.str.strip()
         for col in COLUMNS:
             if col not in df.columns:
                 df[col] = ""
-        df = df[COLUMNS]  # Ordena las columnas conforme a COLUMNS
-        df = df.fillna('')  # Limpia valores vacíos por ''
+        df = df[COLUMNS]
+        df = df.fillna('')
     return df
 
-def save_data(row):
-    df = get_data()
-    new_df = pd.concat([df, pd.DataFrame([row], columns=COLUMNS)], ignore_index=True)
-    conn.update(worksheet=worksheet_name, data=new_df, spreadsheet=GSHEET_URL)
-    
 def update_estado(indice, nuevo_estado):
     df_actual = get_data()
     df_actual.at[indice, 'Estado_Nego'] = nuevo_estado
     conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)    
 
-# --- SECCION NEGOCIACIONES ---
-if section == "Negociaciones":
-    st.markdown("## :card_index_dividers: Negociaciones")
+def agregar_nota_historial(indice, nota_existente, nueva_nota):
+    df_actual = get_data()
+    fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+    texto_agregado = f"[{fecha_hoy}] - {nueva_nota}"
+    
+    nota_previa = str(nota_existente)
+    if nota_previa.strip() == "" or nota_previa.lower() == "nan":
+        nota_final = texto_agregado
+    else:
+        nota_final = f"{nota_previa}\n{texto_agregado}"
+        
+    df_actual.at[indice, 'Notas'] = nota_final
+    conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
 
-    df = get_data()
+df = get_data()
+
+# --- 0. LÓGICA DE FILTROS GLOBALES ---
+lista_asesores = ["Todos los Asesores"] + list(USUARIOS.keys())
+try:
+    index_inicio = lista_asesores.index(st.session_state.usuario_actual)
+except:
+    index_inicio = 0
+
+# --- PESTAÑA 1: POTENCIALES (LEADS) ---
+if section == "Potenciales":
+    st.markdown("## 🎯 Clientes Potenciales (Aún sin Presupuesto)")
+    
+    if df.empty:
+        st.info("No hay registros todavía.")
+    else:
+        asesor_seleccionado = st.selectbox("Filtrar por Asesor:", lista_asesores, index=index_inicio)
+        
+        # Filtramos solo los que son Potenciales
+        if asesor_seleccionado == "Todos los Asesores":
+            df_potenciales = df[df['Estado_Nego'] == 'Potencial']
+        else:
+            df_potenciales = df[(df['Asesor'] == asesor_seleccionado) & (df['Estado_Nego'] == 'Potencial')]
+            
+        st.metric("Total de Clientes Potenciales", len(df_potenciales))
+        st.markdown("---")
+
+        for idx, row in df_potenciales.iterrows():
+            with st.container():
+                st.markdown(
+                    f"""
+                    <div style="background:white;padding:1em;border-radius:10px; border-left: 5px solid #6c757d;
+                    margin-bottom:0.5em; box-shadow:0 1px 4px #d0d6e1; color:black !important;">
+                        <b>Cliente:</b> {row.get('Cliente', '')} | <b>Empresa:</b> {row.get('Empresa', '')} <br>
+                        <b>Teléfono:</b> {row.get('Telefono', '')} | <b>Próx. Llamada:</b> {row.get('Proxima llamada', '')}
+                    </div>
+                    """, unsafe_allow_html=True
+                )
+            
+            with st.expander(f"Ver / Editar a {row.get('Cliente', '')}", expanded=False):
+                # Historial de Notas
+                st.markdown("**📝 Historial de Seguimiento:**")
+                st.info(row.get('Notas', 'Sin notas previas.'))
+                
+                col_n1, col_n2 = st.columns([3, 1])
+                with col_n1:
+                    nueva_nota = st.text_input("Agregar nueva nota:", key=f"nota_pot_{idx}", placeholder="Escriba lo que se habló hoy...")
+                with col_n2:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("Guardar Nota", key=f"btn_nota_pot_{idx}"):
+                        if nueva_nota.strip():
+                            agregar_nota_historial(idx, row.get('Notas', ''), nueva_nota)
+                            st.cache_data.clear()
+                            st.rerun()
+                
+                st.markdown("---")
+                # Botón de Promoción
+                st.markdown("**¿El cliente ya pidió presupuesto?**")
+                if st.button("🚀 Promover a Negociación Activa", key=f"promover_{idx}", type="primary", use_container_width=True):
+                    update_estado(idx, "En Proceso")
+                    st.cache_data.clear()
+                    st.rerun()
+
+# --- PESTAÑA 2: NEGOCIACIONES ---
+elif section == "Negociaciones":
+    st.markdown("## :card_index_dividers: Negociaciones Activas")
+
     if df.empty:
         st.info("No hay negociaciones registradas todavía.")
     else:
-            # 0. Limpieza automática (Arregla el problema del "0" y los vacíos en los gráficos)
-            if 'Estado_Nego' not in df.columns:
-                df['Estado_Nego'] = 'En Proceso'
-            df['Estado_Nego'] = df['Estado_Nego'].replace(['', '0', 0, None], 'En Proceso').fillna('En Proceso')
-            df['Asesor'] = df['Asesor'].replace(['', '0', 0, None], 'Sin Asignar').fillna('Sin Asignar')
+        st.markdown("### 👔 Vista de Administrador")
+        asesor_seleccionado = st.selectbox("Filtrar métricas por Asesor:", lista_asesores, index=index_inicio)
 
-# 1. EL FILTRO INTELIGENTE
-            st.markdown("### 👔 Vista de Administrador")
-            lista_asesores = ["Todos los Asesores"] + list(USUARIOS.keys())
-            try:
-                index_inicio = lista_asesores.index(st.session_state.usuario_actual)
-            except:
-                index_inicio = 0
-            asesor_seleccionado = st.selectbox("Filtrar métricas por Asesor:", lista_asesores, index=index_inicio)
+        if asesor_seleccionado == "Todos los Asesores":
+            df_tablero = df[(df['Estado_Nego'] != 'Potencial') & (df['Estado_Nego'] != '')]
+        else:
+            df_tablero = df[(df['Asesor'] == asesor_seleccionado) & (df['Estado_Nego'] != 'Potencial') & (df['Estado_Nego'] != '')]
 
-            # Filtramos la tabla según lo que elijas en el menú
-            if asesor_seleccionado == "Todos los Asesores":
-                df_tablero = df # Usa todos los datos
-            else:
-                df_tablero = df[df['Asesor'] == asesor_seleccionado] # Usa solo los de ese asesor
+        st.markdown("<br>", unsafe_allow_html=True)
 
-            st.markdown("<br>", unsafe_allow_html=True)
+        total_usd = 0
+        total_ars = 0
 
-            # 2. LAS TARJETAS NUMÉRICAS (Ahora calculan sobre df_tablero)
-            total_usd = 0
-            total_ars = 0
+        for val in df_tablero['Monto USD / $'].dropna():
+            val_str = str(val).upper()
+            if "USD" in val_str:
+                numero = val_str.replace("USD", "").replace(",", "").strip()
+                try: total_usd += float(numero)
+                except: pass
+            elif "ARS" in val_str:
+                numero = val_str.replace("ARS", "").replace(",", "").strip()
+                try: total_ars += float(numero)
+                except: pass
 
-            for val in df_tablero['Monto USD / $'].dropna():
-                val_str = str(val).upper()
-                if "USD" in val_str:
-                    numero = val_str.replace("USD", "").replace(",", "").strip()
-                    try: total_usd += float(numero)
-                    except: pass
-                elif "ARS" in val_str:
-                    numero = val_str.replace("ARS", "").replace(",", "").strip()
-                    try: total_ars += float(numero)
-                    except: pass
+        kpi1, kpi2, kpi3 = st.columns(3)
+        kpi1.metric(label="💰 Total Cotizado (USD)", value=f"USD {total_usd:,.0f}")
+        kpi2.metric(label="💵 Total Cotizado (ARS)", value=f"ARS {total_ars:,.0f}")
+        kpi3.metric(label="🤝 Negociaciones", value=f"{len(df_tablero)}")
 
-            kpi1, kpi2, kpi3 = st.columns(3)
-            kpi1.metric(label="💰 Total Cotizado (USD)", value=f"USD {total_usd:,.0f}")
-            kpi2.metric(label="💵 Total Cotizado (ARS)", value=f"ARS {total_ars:,.0f}")
-            kpi3.metric(label="🤝 Negociaciones", value=f"{len(df_tablero)}")
-
-            # 3. LOS GRÁFICOS (Ahora reaccionan al filtro)
-            st.markdown("---") 
+        st.markdown("---") 
+        col_graf1, col_graf2 = st.columns(2)
+        
+        with col_graf1:
+            def extraer_usd(valor):
+                texto = str(valor).upper()
+                if "USD" in texto:
+                    numero = texto.replace("USD", "").replace(",", "").strip()
+                    try: return float(numero)
+                    except: return 0.0
+                return 0.0
             
-            col_graf1, col_graf2 = st.columns(2)
+            df_grafico = df_tablero.copy()
+            df_grafico['Plata_USD'] = df_grafico['Monto USD / $'].apply(extraer_usd)
             
-            with col_graf1:
-                def extraer_usd(valor):
-                    texto = str(valor).upper()
-                    if "USD" in texto:
-                        numero = texto.replace("USD", "").replace(",", "").strip()
-                        try: return float(numero)
-                        except: return 0.0
-                    return 0.0
-                
-                # Ojo acá: Usamos una copia para no ensuciar tu Excel original
-                df_grafico = df_tablero.copy()
-                df_grafico['Plata_USD'] = df_grafico['Monto USD / $'].apply(extraer_usd)
+            # Solo graficar si hay datos
+            if not df_grafico.empty and df_grafico['Plata_USD'].sum() > 0:
                 datos_torta = df_grafico.groupby('Estado_Nego')['Plata_USD'].sum().reset_index()
-                
                 fig_torta = px.pie(datos_torta, values='Plata_USD', names='Estado_Nego', 
                                  title=f'Monto en Dólares ({asesor_seleccionado})',
-                                 hole=0.4,
-                                 color='Estado_Nego',
+                                 hole=0.4, color='Estado_Nego',
                                  color_discrete_map={'Ganada':'#28a745', 'Perdida':'#dc3545', 'En Proceso':'#ffc107'})
                 fig_torta.update_traces(textinfo='percent+label')
                 st.plotly_chart(fig_torta, use_container_width=True)
+            else:
+                st.info("No hay montos en USD para graficar.")
 
-            with col_graf2:
+        with col_graf2:
+            if not df_tablero.empty:
                 datos_barras = df_tablero['Asesor'].value_counts().reset_index()
                 datos_barras.columns = ['Asesor', 'Cantidad']
-                fig_barras = px.bar(datos_barras, x='Asesor', y='Cantidad', 
-                                  title='Cantidad de Clientes',
-                                  color='Asesor')
+                fig_barras = px.bar(datos_barras, x='Asesor', y='Cantidad', title='Cantidad de Negociaciones', color='Asesor')
                 st.plotly_chart(fig_barras, use_container_width=True)
-# --- EL BUSCADOR Y EL BOTÓN DE REFRESCO ---
-            col_busq, col_refresco = st.columns([4, 1])
-            
-            with col_busq:
-                busqueda = st.text_input("🔍 Buscar por Cliente o Empresa:", placeholder="Ej: Juan Perez...")
+
+        col_busq, col_refresco = st.columns([4, 1])
+        with col_busq:
+            busqueda = st.text_input("🔍 Buscar Cliente/Empresa en Negociaciones:")
+        with col_refresco:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🔄 Actualizar Datos"):
+                st.cache_data.clear()
+                st.rerun()
                 
-            with col_refresco:
-                st.markdown("<br>", unsafe_allow_html=True) # Para alinear con el buscador
-                if st.button("🔄 Actualizar"):
-                    st.cache_data.clear() # Limpia la memoria
-                    st.rerun() # Reinicia la app para traer los datos nuevos
-                    
-            # Lógica de filtrado
-            if busqueda:
-                # Convertimos a texto por las dudas y buscamos coincidencias
-                df_filtrado = df[
-                    df['Cliente'].astype(str).str.contains(busqueda, case=False, na=False) |
-                    df['Empresa'].astype(str).str.contains(busqueda, case=False, na=False)  
-                    ]
-            else:
-                df_filtrado = df # Si no buscó nada, mostramos todo
-            # ACA EMPIEZA TU BUCLE ORIGINAL PERO CON LOS DATOS FILTRADOS
-            for idx, row in df_filtrado.iterrows():
-                with st.container():
-                    # Cabecera de tarjeta (agrega color oscuro al texto para buena legibilidad)
-                    st.markdown(
-                        f"""
-                        <div class="crm-neg-card" style="background:white;padding:1.3em;border-radius:12px;
-                        margin-bottom:0.6em; box-shadow:0 1px 8px #d0d6e1; color:black !important;">
-                            <b>Cliente:</b> {row.get('Cliente', '') if row.get('Cliente', '').strip() else 'N/A'} <br>
-                            <b>Empresa:</b> {row.get('Empresa', '') if row.get('Empresa', '').strip() else 'N/A'} <br>
-                            <b>Monto USD / $:</b> <span style="color:#2261b6">{row.get('Monto USD / $', '')}</span>
-                        </div>
-                        """, unsafe_allow_html=True
-                    )
-                # Expander con más detalles
-                cliente_str = row.get('Cliente', '')
-                with st.expander(f"Ver detalles de {cliente_str}", expanded=False):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown(f"**Profesión:** {row.get('Profesion', '')}")
-                        st.markdown(f"**Dirección:** {row.get('Direccion', '')}")
-                        st.markdown(f"**País:** {row.get('Pais', '')}")
-                        st.markdown(f"**Ciudad:** {row.get('Ciudad', '')}")
-                        st.markdown(f"**Estado /Prov.:** {row.get('Estado /Prov.', '')}")
-                        st.markdown(f"**Cargo:** {row.get('Cargo', '')}")
-                        st.markdown(f"**Teléfono:** {row.get('Telefono', '')}")
-                        st.markdown(f"**N° Cotiz.:** {row.get('N° Cotiz.', '')}")
-                    with col2:
-                        st.markdown(f"**Notas:** {row.get('Notas', '')}")
-                        proxima_llamada = row.get('Proxima llamada', '')
-                        st.markdown(f"**Próxima llamada:** {proxima_llamada if proxima_llamada else 'N/A'}")
-                        st.markdown(f"**Asesor comercial:** {row.get('Asesor', '')}")
-                        creado = row.get('Creado', '')
-                        st.markdown(f"**Creado:** {creado if creado else 'N/A'}")
-                    # --- 1. BOTÓN PARA VER EL PRESUPUESTO ---
-                    if 'Link_PDF' in row and str(row.get('Link_PDF', '')).strip() != "":
-                        st.markdown("---")
-                        st.link_button("📄 Abrir Presupuesto PDF", row['Link_PDF'], use_container_width=True)
-                    
-                    # --- 2. BOTONES DE RESOLUCIÓN (GANADA/PERDIDA) ---
-                    st.markdown("---")
-                    st.markdown("**💰 Resolución de la Negociación:**")
-                    
-                    col_g, col_p = st.columns(2)
-                    with col_g:
-                        if st.button("✅ Marcar como GANADA", key=f"ganar_{idx}", use_container_width=True):
-                            update_estado(idx, "Ganada")
+        if busqueda:
+            df_filtrado = df_tablero[
+                df_tablero['Cliente'].astype(str).str.contains(busqueda, case=False, na=False) |
+                df_tablero['Empresa'].astype(str).str.contains(busqueda, case=False, na=False)  
+            ]
+        else:
+            df_filtrado = df_tablero
+
+        for idx, row in df_filtrado.iterrows():
+            with st.container():
+                st.markdown(
+                    f"""
+                    <div class="crm-neg-card" style="background:white;padding:1.3em;border-radius:12px;
+                    margin-bottom:0.6em; box-shadow:0 1px 8px #d0d6e1; color:black !important;">
+                        <b>Cliente:</b> {row.get('Cliente', '')} <br>
+                        <b>Empresa:</b> {row.get('Empresa', '')} <br>
+                        <b>Monto USD / $:</b> <span style="color:#2261b6">{row.get('Monto USD / $', '')}</span>
+                    </div>
+                    """, unsafe_allow_html=True
+                )
+
+            with st.expander(f"Ver detalles de {row.get('Cliente', '')}", expanded=False):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(f"**Teléfono:** {row.get('Telefono', '')}")
+                    st.markdown(f"**Empresa:** {row.get('Empresa', '')}")
+                    st.markdown(f"**N° Cotiz.:** {row.get('N° Cotiz.', '')}")
+                with col2:
+                    st.markdown(f"**Próxima llamada:** {row.get('Proxima llamada', '')}")
+                    st.markdown(f"**Asesor comercial:** {row.get('Asesor', '')}")
+                    st.markdown(f"**Estado Actual:** {row.get('Estado_Nego', '')}")
+                
+                # --- SISTEMA DE NOTAS HISTÓRICAS ---
+                st.markdown("---")
+                st.markdown("**📝 Historial de Seguimiento:**")
+                st.info(row.get('Notas', 'Sin notas previas.'))
+                
+                col_n1, col_n2 = st.columns([3, 1])
+                with col_n1:
+                    nueva_nota = st.text_input("Agregar nueva nota:", key=f"nota_neg_{idx}", placeholder="Escriba lo que se habló hoy...")
+                with col_n2:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("Guardar Nota", key=f"btn_nota_neg_{idx}"):
+                        if nueva_nota.strip():
+                            agregar_nota_historial(idx, row.get('Notas', ''), nueva_nota)
                             st.cache_data.clear()
                             st.rerun()
-                    with col_p:
-                        if st.button("❌ Marcar como PERDIDA", key=f"perder_{idx}", use_container_width=True):
-                            update_estado(idx, "Perdida")
-                            st.cache_data.clear()
-                            st.rerun()    
-                        
 
-# --- PESTAÑA: AGREGAR CLIENTE ---
-if section == "Agregar Cliente":
-    st.markdown("<h2>🙋‍♂️ Agregar nuevo cliente/negociación</h2>", unsafe_allow_html=True)
+                if 'Link_PDF' in row and str(row.get('Link_PDF', '')).strip() != "":
+                    st.markdown("---")
+                    st.link_button("📄 Abrir Presupuesto PDF", row['Link_PDF'], use_container_width=True)
+                
+                st.markdown("---")
+                st.markdown("**💰 Resolución de la Negociación:**")
+                col_g, col_p = st.columns(2)
+                with col_g:
+                    if st.button("✅ Marcar como GANADA", key=f"ganar_{idx}", use_container_width=True):
+                        update_estado(idx, "Ganada")
+                        st.cache_data.clear()
+                        st.rerun()
+                with col_p:
+                    if st.button("❌ Marcar como PERDIDA", key=f"perder_{idx}", use_container_width=True):
+                        update_estado(idx, "Perdida")
+                        st.cache_data.clear()
+                        st.rerun()    
+
+# --- PESTAÑA 3: AGREGAR CLIENTE ---
+elif section == "Agregar Cliente":
+    st.markdown("<h2>🙋‍♂️ Cargar nuevo Contacto</h2>", unsafe_allow_html=True)
     
     with st.form("form_nuevo_cliente", clear_on_submit=True):
+        st.markdown("### 1. ¿En qué fase está este contacto?")
+        tipo_contacto = st.radio("Seleccione el estado inicial:", [
+            "🎯 Potencial Cliente (Solo son primeros contactos, aún NO hay presupuesto)", 
+            "💼 Negociación Activa (Ya se le envió un presupuesto)"
+        ], label_visibility="collapsed")
+        st.markdown("---")
+        
         col1, col2 = st.columns(2)
         
         with col1:
-            cliente = st.text_input("Nombre del cliente *")
-            direccion = st.text_input("Dirección")
-            ciudad = st.text_input("Ciudad")
+            cliente = st.text_input("Nombre del contacto *")
             empresa = st.text_input("Empresa")
             telefono = st.text_input("Teléfono")
             
-            # --- LA MEJORA DEL MONTO Y MONEDA ---
-            # Partimos este pedacito en dos columnas invisibles
             col_monto, col_moneda = st.columns([2, 1]) 
             with col_monto:
-                monto_valor = st.text_input("Monto numérico")
+                monto_valor = st.text_input("Monto numérico (Dejar vacío si es Potencial)")
             with col_moneda:
                 moneda = st.selectbox("Moneda", ["USD", "ARS"])
                 
-            proxima_llamada = st.date_input("Próxima llamada")
+            proxima_llamada = st.date_input("Próxima llamada de seguimiento")
             
         with col2:
-            profesion = st.text_input("Profesión")
-            pais = st.text_input("País")
-            estado = st.text_input("Estado /Prov.")
-            cargo = st.text_input("Cargo")
-            cotizacion = st.text_input("N° Cotiz.")
-            notas = st.text_area("Notas")
+            profesion = st.text_input("Profesión / Cargo")
+            pais = st.text_input("País / Ciudad")
+            cotizacion = st.text_input("N° Cotiz. (Si la hay)")
+            nota_inicial = st.text_area("Nota Inicial del contacto")
+            
             vendedores = list(USUARIOS.keys())
             try:
                 index_vendedor = vendedores.index(st.session_state.usuario_actual)
             except:
                 index_vendedor = 0
-            asesor = st.selectbox("Asesor comercial", vendedores, index=index_vendedor)
+            asesor = st.selectbox("Asesor comercial asignado", vendedores, index=index_vendedor)
             
         st.markdown("---")
-        link_pdf = st.text_input("🔗 Link al Presupuesto (Google Drive / Dropbox)", placeholder="Pegue aquí el enlace compartido...")    
+        link_pdf = st.text_input("🔗 Link al Presupuesto (Si ya lo tiene)", placeholder="Pegue aquí el enlace a Drive/Dropbox...")    
             
         st.markdown("<br>", unsafe_allow_html=True)
-        submit_btn = st.form_submit_button("Agregar Negociación", type="primary")
+        submit_btn = st.form_submit_button("Guardar en la Base de Datos", type="primary")
         
-        # --- LA LÓGICA DE GUARDADO ---
         if submit_btn:
             if cliente.strip() == "":
-                st.warning("⚠️ El Nombre del cliente es obligatorio para crear la ficha.")
+                st.warning("⚠️ El Nombre es obligatorio.")
             else:
-                with st.spinner("Guardando en la base de datos..."):
-                    
-                    # 1. Unimos la moneda elegida y el número (Ej: "USD 13000")
+                with st.spinner("Guardando..."):
                     monto_final = f"{moneda} {monto_valor}" if monto_valor.strip() != "" else ""
-                    
-                    # 2. Fabricamos la fecha de HOY en formato Día/Mes/Año
                     fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+                    
+                    # Definimos si va a Potenciales o a Negociaciones
+                    estado_inicial = "Potencial" if "Potencial" in tipo_contacto else "En Proceso"
+                    
+                    # Formateamos la nota inicial para que encaje en el historial
+                    texto_nota = f"[{fecha_hoy}] - {nota_inicial}" if nota_inicial.strip() else ""
 
-                    # 3. Empaquetamos AHORA SÍ todos los datos
                     nuevo_dato = pd.DataFrame([{
-                        "Creado": fecha_hoy,  # <- Acá va la fecha automática
+                        "Creado": fecha_hoy,
                         "Cliente": cliente,
                         "Profesion": profesion,
-                        "Direccion": direccion,
-                        "Pais": pais,
-                        "Ciudad": ciudad,
-                        "Estado /Prov.": estado,
-                        "Empresa": empresa,
-                        "Cargo": cargo,
-                        "Telefono": telefono,
+                        "Direccion": "", "Pais": pais, "Ciudad": "", "Estado /Prov.": "",
+                        "Empresa": empresa, "Cargo": "", "Telefono": telefono,
                         "N° Cotiz.": cotizacion,
-                        "Monto USD / $": monto_final, # <- Acá viaja el monto fusionado
-                        "Notas": notas,
+                        "Monto USD / $": monto_final,
+                        "Notas": texto_nota,
                         "Proxima llamada": proxima_llamada.strftime("%d/%m/%Y"),
                         "Asesor": asesor,
-                        "Estado_Nego": "En Proceso",
+                        "Estado_Nego": estado_inicial,
                         "Link_PDF": link_pdf
                     }])
                     
@@ -382,11 +408,11 @@ if section == "Agregar Cliente":
                         df_actualizado = pd.concat([df_actual, nuevo_dato], ignore_index=True)
                         conn.update(worksheet=worksheet_name, data=df_actualizado)
                         st.cache_data.clear() 
-                        st.success(f"✅ ¡La negociación con {cliente} se guardó exitosamente por {monto_final}!")
+                        st.success(f"✅ ¡{cliente} guardado exitosamente como {estado_inicial}!")
                     except Exception as e:
-                        st.error(f"Hubo un error al intentar guardar: {e}")
+                        st.error(f"Error al guardar: {e}")
 
-# --- SECCIÓN CALENDARIO ---
+# --- PESTAÑA 4: CALENDARIO ---
 elif section == "Calendario":
     st.markdown("## 📅 Agenda de Seguimientos")
     
@@ -395,38 +421,32 @@ elif section == "Calendario":
     if df.empty:
         st.info("No hay clientes registrados todavía.")
     else:
-        # 1. Filtramos SOLO los que están "En Proceso" (No queremos llamar a los que ya nos compraron o nos rechazaron)
-        if 'Estado_Nego' in df.columns:
-            df_activos = df[df['Estado_Nego'] == 'En Proceso'].copy()
-        else:
-            df_activos = df.copy()
+        # En el calendario mostramos TANTO potenciales como negociaciones activas
+        df_activos = df[df['Estado_Nego'].isin(['En Proceso', 'Potencial'])].copy()
         
         if df_activos.empty:
-            st.success("¡Todo al día! No hay clientes en proceso esperando seguimiento.")
+            st.success("¡Todo al día! No hay clientes esperando seguimiento.")
         else:
-            # 2. Convertimos el texto de la fecha a una "Fecha Real" matemática para que Python sepa cuál va antes
             df_activos['Fecha_Orden'] = pd.to_datetime(df_activos['Proxima llamada'], format='%d/%m/%Y', errors='coerce')
-            
-            # 3. Ordenamos la tabla de la fecha más urgente (vieja) a la más lejana
             df_ordenado = df_activos.sort_values(by='Fecha_Orden', ascending=True)
             
-            st.markdown("Estos son los clientes activos ordenados por su fecha de próxima llamada:")
+            st.markdown("Contactos activos ordenados por su fecha de próxima llamada:")
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # 4. Dibujamos la lista como si fuera una agenda de celular
             for idx, row in df_ordenado.iterrows():
                 fecha_texto = row.get('Proxima llamada', 'Sin fecha')
                 cliente = row.get('Cliente', 'Desconocido')
-                empresa = row.get('Empresa', 'Sin empresa')
-                tel = row.get('Telefono', 'Sin teléfono')
-                asesor = row.get('Asesor', '')
+                estado = row.get('Estado_Nego', '')
+                
+                # Etiqueta visual para distinguir si es Potencial o Negociación
+                etiqueta = "🎯 Potencial" if estado == "Potencial" else "💼 En Proceso"
                 
                 with st.container():
                     st.markdown(
                         f"""
                         <div style="background-color: #2E3E57; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #FF6600;">
-                            <h4 style="color: white; margin: 0;">📅 {fecha_texto} | {cliente} ({empresa})</h4>
-                            <p style="color: #d0d6e1; margin: 5px 0 0 0;">📞 Tel: <b>{tel}</b> | 👔 Asesor: {asesor}</p>
+                            <h4 style="color: white; margin: 0;">📅 {fecha_texto} | {cliente} <span style="font-size: 14px; font-weight: normal; background-color: #556B8D; padding: 3px 8px; border-radius: 5px; margin-left: 10px;">{etiqueta}</span></h4>
+                            <p style="color: #d0d6e1; margin: 5px 0 0 0;">📞 Tel: <b>{row.get('Telefono', '')}</b> | 👔 Asesor: {row.get('Asesor', '')}</p>
                         </div>
                         """, 
                         unsafe_allow_html=True
