@@ -10,7 +10,7 @@ st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
 # --- 1. BASE DE DATOS DE USUARIOS (Ocultas por seguridad) ---
 USUARIOS = st.secrets["passwords"]
-ADMINISTRADOR = "Ricardo Ippolito" # El usuario con acceso total
+ADMINISTRADOR = "Ricardo Ippolito"
 
 # --- 2. GESTIÓN DE SESIÓN (LOGIN) ---
 if 'autenticado' not in st.session_state:
@@ -131,6 +131,26 @@ def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_obj, fecha_a
     df_actual.at[indice, 'Proxima llamada'] = nueva_fecha_str
     conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
 
+# --- NUEVA FUNCIÓN: GENERADOR AUTONUMÉRICO DE COTIZACIONES ---
+def generar_numero_cotizacion(df):
+    numeros = []
+    for val in df['N° Cotiz.'].dropna():
+        # Extraemos solo los dígitos (por si alguien escribió "Presupuesto 100")
+        digitos = ''.join(filter(str.isdigit, str(val)))
+        if digitos:
+            numeros.append(int(digitos))
+    
+    if not numeros:
+        return "001000"
+    
+    maximo = max(numeros)
+    siguiente = maximo + 1
+    # Aseguramos que el piso siempre sea 1000
+    if siguiente < 1000:
+        siguiente = 1000
+        
+    return f"{siguiente:06d}"
+
 df = get_data()
 
 lista_asesores = ["Todos los Asesores"] + list(USUARIOS.keys())
@@ -157,7 +177,6 @@ if section == "Potenciales":
         st.markdown("---")
 
         for idx, row in df_potenciales.iterrows():
-            # LÓGICA DE PERMISOS
             puede_editar = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
 
             with st.container():
@@ -231,6 +250,11 @@ if section == "Potenciales":
                         df_actual.at[idx, 'Estado_Nego'] = "En Proceso"
                         if nuevo_monto_prom.strip(): df_actual.at[idx, 'Monto USD / $'] = nuevo_monto_prom
                         if nuevo_link_prom.strip(): df_actual.at[idx, 'Link_PDF'] = nuevo_link_prom
+                        
+                        # --- ASIGNACIÓN AUTONUMÉRICA AL PROMOVER ---
+                        if not str(df_actual.at[idx, 'N° Cotiz.']).strip():
+                            df_actual.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_actual)
+                            
                         conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
                         st.cache_data.clear()
                         st.rerun()
@@ -504,7 +528,8 @@ elif section == "Agregar Cliente":
     with col2:
         profesion = st.text_input("Profesión / Cargo", key=f"prof_{fk}")
         pais = st.text_input("País / Ciudad", key=f"pais_{fk}")
-        cotizacion = st.text_input("N° Cotiz.", key=f"cot_{fk}")
+        # --- AHORA ES OPCIONAL PARA AUTOGENERAR ---
+        cotizacion = st.text_input("N° Cotiz. (Dejar vacío para autogenerar)", key=f"cot_{fk}")
         nota_inicial = st.text_area("Nota Inicial", key=f"notain_{fk}")
         
         vendedores = list(USUARIOS.keys())
@@ -513,7 +538,6 @@ elif section == "Agregar Cliente":
         except:
             index_vendedor = 0
         
-        # Si es Administrador puede asignar el cliente a cualquiera, si no, se bloquea en su nombre
         if st.session_state.usuario_actual == ADMINISTRADOR:
             asesor = st.selectbox("Asesor asignado", vendedores, index=index_vendedor, key=f"ase_{fk}")
         else:
@@ -530,10 +554,17 @@ elif section == "Agregar Cliente":
             st.warning("⚠️ El Nombre es obligatorio para guardar.")
         else:
             with st.spinner("Guardando..."):
+                df_actual_temp = conn.read(worksheet=worksheet_name, usecols=list(range(len(COLUMNS))), names=COLUMNS, ttl=5)
+                
                 monto_final = f"{moneda} {monto_valor}" if monto_valor.strip() != "" else ""
                 fecha_hoy = datetime.now().strftime("%d/%m/%Y")
-                
                 estado_inicial = "Potencial" if "Potencial" in tipo_contacto else "En Proceso"
+                
+                # --- ASIGNACIÓN AUTONUMÉRICA AL CREAR NUEVO CLIENTE ---
+                cotizacion_final = cotizacion.strip()
+                if estado_inicial == "En Proceso" and cotizacion_final == "":
+                    cotizacion_final = generar_numero_cotizacion(df_actual_temp)
+                
                 texto_nota = f"[{fecha_hoy}] 📝 {nota_inicial}" if nota_inicial.strip() else ""
 
                 nuevo_dato = pd.DataFrame([{
@@ -542,7 +573,7 @@ elif section == "Agregar Cliente":
                     "Profesion": profesion,
                     "Direccion": "", "Pais": pais, "Ciudad": "", "Estado /Prov.": "",
                     "Empresa": empresa, "Cargo": "", "Telefono": telefono,
-                    "N° Cotiz.": cotizacion,
+                    "N° Cotiz.": cotizacion_final,
                     "Monto USD / $": monto_final,
                     "Notas": texto_nota,
                     "Proxima llamada": proxima_llamada.strftime("%d/%m/%Y"),
@@ -552,8 +583,7 @@ elif section == "Agregar Cliente":
                 }])
                 
                 try:
-                    df_actual = conn.read(worksheet=worksheet_name, usecols=list(range(len(COLUMNS))), names=COLUMNS, ttl=5)
-                    df_actualizado = pd.concat([df_actual, nuevo_dato], ignore_index=True)
+                    df_actualizado = pd.concat([df_actual_temp, nuevo_dato], ignore_index=True)
                     conn.update(worksheet=worksheet_name, data=df_actualizado)
                     st.cache_data.clear() 
                     
