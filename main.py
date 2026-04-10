@@ -148,17 +148,23 @@ def get_data():
                 df[col] = ""
         df = df[COLUMNS]
         df = df.fillna('')
-        # Escudo de lectura: le sacamos la tilde invisible a los teléfonos que la tengan
-        df['Telefono'] = df['Telefono'].astype(str).str.lstrip("'")
+        
+        # Limpiamos los espacios invisibles y los errores viejos para el CRM
+        df['Telefono'] = df['Telefono'].astype(str).str.strip()
+        df['Telefono'] = df['Telefono'].replace('#ERROR!', '')
+        
     return df
 
-# --- MOTOR DE GUARDADO SEGURO (Evita el Formula Parse Error) ---
+# --- ESCUDO INFALIBLE CONTRA EL FORMULA PARSE ERROR ---
 def guardar_datos(df_a_guardar):
     df_safe = df_a_guardar.copy()
-    # Si detecta que un teléfono arranca con +, le clava un apóstrofe para que Google no crea que es una fórmula
+    
+    # Truco del Espacio: Si arranca con "+", le clavamos un espacio en blanco al principio
+    # Google Sheets ve el espacio y dice "Ah, esto es texto, no calculo nada".
     df_safe['Telefono'] = df_safe['Telefono'].astype(str).apply(
-        lambda x: f"'{x}" if x.startswith("+") else x
+        lambda x: f" {x.strip()}" if x.strip().startswith("+") else x.strip()
     )
+    
     conn.update(worksheet=worksheet_name, data=df_safe, spreadsheet=GSHEET_URL)
     st.cache_data.clear()
 
