@@ -131,12 +131,12 @@ def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_obj, fecha_a
 
 df = get_data()
 
-# --- 0. LÓGICA DE FILTROS GLOBALES ---
 lista_asesores = ["Todos los Asesores"] + list(USUARIOS.keys())
 try:
     index_inicio = lista_asesores.index(st.session_state.usuario_actual)
 except:
     index_inicio = 0
+
 
 # --- PESTAÑA 1: POTENCIALES (LEADS) ---
 if section == "Potenciales":
@@ -168,6 +168,29 @@ if section == "Potenciales":
                 )
             
             with st.expander(f"Ver / Editar a {row.get('Cliente', '')}", expanded=False):
+                # --- NUEVO: EDICIÓN COMPLETA DEL CONTACTO ---
+                with st.expander("⚙️ Editar Ficha del Cliente", expanded=False):
+                    ce1, ce2 = st.columns(2)
+                    with ce1:
+                        e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_pot_{idx}")
+                        e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_pot_{idx}")
+                        e_tel = st.text_input("Teléfono", value=row.get('Telefono',''), key=f"e_tel_pot_{idx}")
+                    with ce2:
+                        e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_pot_{idx}")
+                        e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_pot_{idx}")
+                        e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_pot_{idx}")
+                    if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_pot_{idx}"):
+                        df_act = get_data()
+                        df_act.at[idx, 'Cliente'] = e_cli
+                        df_act.at[idx, 'Empresa'] = e_emp
+                        df_act.at[idx, 'Telefono'] = e_tel
+                        df_act.at[idx, 'Profesion'] = e_prof
+                        df_act.at[idx, 'Pais'] = e_pais
+                        df_act.at[idx, 'N° Cotiz.'] = e_cot
+                        conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
+                        st.cache_data.clear()
+                        st.rerun()
+
                 st.markdown("**📝 Gestión de Seguimiento (Historial):**")
                 st.info(row.get('Notas', 'Sin notas previas.'))
                 
@@ -293,11 +316,8 @@ elif section == "Negociaciones":
         else:
             df_filtrado = df_tablero
 
-        # DIBUJO DE TARJETAS DE NEGOCIACIÓN
         for idx, row in df_filtrado.iterrows():
             estado_actual = row.get('Estado_Nego', 'En Proceso')
-            
-            # --- MEJORA: COLORES Y BADGES SEGÚN EL ESTADO ---
             if estado_actual == 'Ganada':
                 borde_color = "#28a745"
                 badge = "<span style='float:right; background-color:#28a745; color:white; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:bold;'>✅ GANADA</span>"
@@ -322,6 +342,29 @@ elif section == "Negociaciones":
                 )
 
             with st.expander(f"Ver detalles de {row.get('Cliente', '')}", expanded=False):
+                # --- NUEVO: EDICIÓN COMPLETA DEL CONTACTO ---
+                with st.expander("⚙️ Editar Ficha del Cliente", expanded=False):
+                    ce1, ce2 = st.columns(2)
+                    with ce1:
+                        e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_neg_{idx}")
+                        e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_neg_{idx}")
+                        e_tel = st.text_input("Teléfono", value=row.get('Telefono',''), key=f"e_tel_neg_{idx}")
+                    with ce2:
+                        e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_neg_{idx}")
+                        e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_neg_{idx}")
+                        e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_neg_{idx}")
+                    if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_neg_{idx}"):
+                        df_act = get_data()
+                        df_act.at[idx, 'Cliente'] = e_cli
+                        df_act.at[idx, 'Empresa'] = e_emp
+                        df_act.at[idx, 'Telefono'] = e_tel
+                        df_act.at[idx, 'Profesion'] = e_prof
+                        df_act.at[idx, 'Pais'] = e_pais
+                        df_act.at[idx, 'N° Cotiz.'] = e_cot
+                        conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
+                        st.cache_data.clear()
+                        st.rerun()
+
                 col1, col2 = st.columns(2)
                 with col1:
                     st.markdown(f"**Teléfono:** {row.get('Telefono', '')}")
@@ -378,7 +421,6 @@ elif section == "Negociaciones":
                 st.markdown("---")
                 st.markdown("**💰 Resolución de la Negociación:**")
                 
-                # --- MEJORA: Lógica de Botones de Resolución ---
                 if estado_actual in ['Ganada', 'Perdida']:
                     st.info(f"Esta negociación ya se encuentra cerrada como **{estado_actual.upper()}**.")
                     if st.button("🔄 Reabrir Negociación a 'En Proceso'", key=f"reabrir_{idx}"):
@@ -418,86 +460,94 @@ elif section == "Negociaciones":
                             st.cache_data.clear()
                             st.rerun()    
 
-# --- PESTAÑA 3: AGREGAR CLIENTE ---
+# --- PESTAÑA 3: AGREGAR CLIENTE (SIN AUTO-ENTER) ---
 elif section == "Agregar Cliente":
     st.markdown("<h2>🙋‍♂️ Cargar nuevo Contacto</h2>", unsafe_allow_html=True)
+    st.info("💡 Consejo: Completa los datos y haz clic en 'Guardar'. (Si presionas la tecla ENTER por error, la página se recargará por seguridad para evitar guardar datos incompletos).")
     
-    with st.form("form_nuevo_cliente", clear_on_submit=True):
-        st.markdown("### 1. ¿En qué fase está este contacto?")
-        tipo_contacto = st.radio("Seleccione el estado inicial:", [
-            "🎯 Potencial Cliente (Solo son primeros contactos, aún NO hay presupuesto)", 
-            "💼 Negociación Activa (Ya se le envió un presupuesto)"
-        ], label_visibility="collapsed")
-        st.markdown("---")
+    # Sistema de reset de campos para anular el bug del ENTER
+    if 'form_key' not in st.session_state:
+        st.session_state.form_key = 0
+    fk = st.session_state.form_key
+    
+    st.markdown("### 1. ¿En qué fase está este contacto?")
+    tipo_contacto = st.radio("Seleccione el estado inicial:", [
+        "🎯 Potencial Cliente (Solo son primeros contactos, aún NO hay presupuesto)", 
+        "💼 Negociación Activa (Ya se le envió un presupuesto)"
+    ], label_visibility="collapsed", key=f"tc_{fk}")
+    st.markdown("---")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        cliente = st.text_input("Nombre del contacto *", key=f"cli_{fk}")
+        empresa = st.text_input("Empresa", key=f"emp_{fk}")
+        telefono = st.text_input("Teléfono", key=f"tel_{fk}")
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            cliente = st.text_input("Nombre del contacto *")
-            empresa = st.text_input("Empresa")
-            telefono = st.text_input("Teléfono")
+        col_monto, col_moneda = st.columns([2, 1]) 
+        with col_monto:
+            monto_valor = st.text_input("Monto numérico (Vacío si es Potencial)", key=f"mon_{fk}")
+        with col_moneda:
+            moneda = st.selectbox("Moneda", ["USD", "ARS"], key=f"div_{fk}")
             
-            col_monto, col_moneda = st.columns([2, 1]) 
-            with col_monto:
-                monto_valor = st.text_input("Monto numérico (Dejar vacío si es Potencial)")
-            with col_moneda:
-                moneda = st.selectbox("Moneda", ["USD", "ARS"])
+        proxima_llamada = st.date_input("Próxima llamada", key=f"prox_{fk}")
+        
+    with col2:
+        profesion = st.text_input("Profesión / Cargo", key=f"prof_{fk}")
+        pais = st.text_input("País / Ciudad", key=f"pais_{fk}")
+        cotizacion = st.text_input("N° Cotiz.", key=f"cot_{fk}")
+        nota_inicial = st.text_area("Nota Inicial", key=f"notain_{fk}")
+        
+        vendedores = list(USUARIOS.keys())
+        try:
+            index_vendedor = vendedores.index(st.session_state.usuario_actual)
+        except:
+            index_vendedor = 0
+        asesor = st.selectbox("Asesor asignado", vendedores, index=index_vendedor, key=f"ase_{fk}")
+        
+    st.markdown("---")
+    link_pdf = st.text_input("🔗 Link al Presupuesto", placeholder="Enlace a Drive/Dropbox...", key=f"pdf_{fk}")    
+        
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    if st.button("💾 Guardar en la Base de Datos", type="primary", use_container_width=True):
+        if cliente.strip() == "":
+            st.warning("⚠️ El Nombre es obligatorio para guardar.")
+        else:
+            with st.spinner("Guardando..."):
+                monto_final = f"{moneda} {monto_valor}" if monto_valor.strip() != "" else ""
+                fecha_hoy = datetime.now().strftime("%d/%m/%Y")
                 
-            proxima_llamada = st.date_input("Próxima llamada de seguimiento")
-            
-        with col2:
-            profesion = st.text_input("Profesión / Cargo")
-            pais = st.text_input("País / Ciudad")
-            cotizacion = st.text_input("N° Cotiz. (Si la hay)")
-            nota_inicial = st.text_area("Nota Inicial del contacto")
-            
-            vendedores = list(USUARIOS.keys())
-            try:
-                index_vendedor = vendedores.index(st.session_state.usuario_actual)
-            except:
-                index_vendedor = 0
-            asesor = st.selectbox("Asesor comercial asignado", vendedores, index=index_vendedor)
-            
-        st.markdown("---")
-        link_pdf = st.text_input("🔗 Link al Presupuesto (Si ya lo tiene)", placeholder="Pegue aquí el enlace a Drive/Dropbox...")    
-            
-        st.markdown("<br>", unsafe_allow_html=True)
-        submit_btn = st.form_submit_button("Guardar en la Base de Datos", type="primary")
-        
-        if submit_btn:
-            if cliente.strip() == "":
-                st.warning("⚠️ El Nombre es obligatorio.")
-            else:
-                with st.spinner("Guardando..."):
-                    monto_final = f"{moneda} {monto_valor}" if monto_valor.strip() != "" else ""
-                    fecha_hoy = datetime.now().strftime("%d/%m/%Y")
-                    
-                    estado_inicial = "Potencial" if "Potencial" in tipo_contacto else "En Proceso"
-                    texto_nota = f"[{fecha_hoy}] 📝 {nota_inicial}" if nota_inicial.strip() else ""
+                estado_inicial = "Potencial" if "Potencial" in tipo_contacto else "En Proceso"
+                texto_nota = f"[{fecha_hoy}] 📝 {nota_inicial}" if nota_inicial.strip() else ""
 
-                    nuevo_dato = pd.DataFrame([{
-                        "Creado": fecha_hoy,
-                        "Cliente": cliente,
-                        "Profesion": profesion,
-                        "Direccion": "", "Pais": pais, "Ciudad": "", "Estado /Prov.": "",
-                        "Empresa": empresa, "Cargo": "", "Telefono": telefono,
-                        "N° Cotiz.": cotizacion,
-                        "Monto USD / $": monto_final,
-                        "Notas": texto_nota,
-                        "Proxima llamada": proxima_llamada.strftime("%d/%m/%Y"),
-                        "Asesor": asesor,
-                        "Estado_Nego": estado_inicial,
-                        "Link_PDF": link_pdf
-                    }])
+                nuevo_dato = pd.DataFrame([{
+                    "Creado": fecha_hoy,
+                    "Cliente": cliente,
+                    "Profesion": profesion,
+                    "Direccion": "", "Pais": pais, "Ciudad": "", "Estado /Prov.": "",
+                    "Empresa": empresa, "Cargo": "", "Telefono": telefono,
+                    "N° Cotiz.": cotizacion,
+                    "Monto USD / $": monto_final,
+                    "Notas": texto_nota,
+                    "Proxima llamada": proxima_llamada.strftime("%d/%m/%Y"),
+                    "Asesor": asesor,
+                    "Estado_Nego": estado_inicial,
+                    "Link_PDF": link_pdf
+                }])
+                
+                try:
+                    df_actual = conn.read(worksheet=worksheet_name, usecols=list(range(len(COLUMNS))), names=COLUMNS, ttl=5)
+                    df_actualizado = pd.concat([df_actual, nuevo_dato], ignore_index=True)
+                    conn.update(worksheet=worksheet_name, data=df_actualizado)
+                    st.cache_data.clear() 
                     
-                    try:
-                        df_actual = conn.read(worksheet=worksheet_name, usecols=list(range(len(COLUMNS))), names=COLUMNS, ttl=5)
-                        df_actualizado = pd.concat([df_actual, nuevo_dato], ignore_index=True)
-                        conn.update(worksheet=worksheet_name, data=df_actualizado)
-                        st.cache_data.clear() 
-                        st.success(f"✅ ¡{cliente} guardado exitosamente como {estado_inicial}!")
-                    except Exception as e:
-                        st.error(f"Error al guardar: {e}")
+                    # MAGIA: Esto hace que se borren todos los campos para cargar el siguiente
+                    st.session_state.form_key += 1
+                    
+                    st.success(f"✅ ¡{cliente} guardado exitosamente!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar: {e}")
 
 # --- PESTAÑA 4: CALENDARIO ---
 elif section == "Calendario":
@@ -543,3 +593,26 @@ elif section == "Calendario":
                         """, 
                         unsafe_allow_html=True
                     )
+                
+                # --- NUEVO: EDICIÓN DESDE EL CALENDARIO ---
+                with st.expander(f"⚙️ Editar / Ver Ficha de {cliente}", expanded=False):
+                    ce1, ce2 = st.columns(2)
+                    with ce1:
+                        e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_cal_{idx}")
+                        e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_cal_{idx}")
+                        e_tel = st.text_input("Teléfono", value=row.get('Telefono',''), key=f"e_tel_cal_{idx}")
+                    with ce2:
+                        e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_cal_{idx}")
+                        e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_cal_{idx}")
+                        e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_cal_{idx}")
+                    if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_cal_{idx}"):
+                        df_act = get_data()
+                        df_act.at[idx, 'Cliente'] = e_cli
+                        df_act.at[idx, 'Empresa'] = e_emp
+                        df_act.at[idx, 'Telefono'] = e_tel
+                        df_act.at[idx, 'Profesion'] = e_prof
+                        df_act.at[idx, 'Pais'] = e_pais
+                        df_act.at[idx, 'N° Cotiz.'] = e_cot
+                        conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
+                        st.cache_data.clear()
+                        st.rerun()
