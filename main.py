@@ -12,7 +12,7 @@ st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 USUARIOS = st.secrets["passwords"]
 ADMINISTRADOR = "Ricardo Ippolito"
 
-# Lista completa de prefijos
+# Lista de prefijos
 CODIGOS_PAISES = [
     "🇦🇷 Argentina (+54)", "🇧🇴 Bolivia (+591)", "🇧🇷 Brasil (+55)", "🇨🇦 Canadá (+1)",
     "🇨🇱 Chile (+56)", "🇨🇴 Colombia (+57)", "🇨🇷 Costa Rica (+506)", "🇨🇺 Cuba (+53)",
@@ -22,6 +22,20 @@ CODIGOS_PAISES = [
     "🇵🇹 Portugal (+351)", "🇩🇴 Rep. Dominicana (+1)", "🇺🇾 Uruguay (+598)", "🇻🇪 Venezuela (+58)",
     "🌎 Otro"
 ]
+
+def extraer_pais_codigo(seleccion):
+    if seleccion == "🌎 Otro":
+        return "Otro", ""
+    try:
+        # Ej: "🇦🇷 Argentina (+54)" -> divide en la bandera y el resto
+        partes = seleccion.split(" ", 1)
+        # partes[1] es "Argentina (+54)" -> divide en nombre y codigo
+        sub_partes = partes[1].split(" (")
+        pais = sub_partes[0].strip()
+        codigo = sub_partes[1].replace(")", "").strip()
+        return pais, codigo
+    except:
+        return "Desconocido", ""
 
 # --- 2. GESTIÓN DE SESIÓN (LOGIN) ---
 if 'autenticado' not in st.session_state:
@@ -92,7 +106,6 @@ GSHEET_URL = st.secrets.get("SHEET_URL", "https://docs.google.com/spreadsheets/d
 conn = st.connection("gsheets", type=GSheetsConnection)
 worksheet_name = "Central Negociaciones"
 
-# --- SE AGREGÓ LA COLUMNA EMAIL ---
 COLUMNS = [
     "Cliente", "Profesion", "Direccion", "Pais", "Ciudad", "Estado /Prov.", "Empresa", 
     "Cargo", "Telefono", "Email", "N° Cotiz.", "Monto USD / $", "Notas", "Proxima llamada", 
@@ -204,36 +217,44 @@ if section == "Potenciales":
                         with ce1:
                             e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_pot_{idx}")
                             e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_pot_{idx}")
-                            
-                            e_tel_actual = str(row.get('Telefono',''))
-                            idx_defecto = 0 if not e_tel_actual.startswith("+") else len(CODIGOS_PAISES)-1 
-                            cep1, cep2 = st.columns([1.2, 2])
-                            with cep1: e_pref = st.selectbox("Cód.", CODIGOS_PAISES, index=idx_defecto, key=f"e_pref_pot_{idx}")
-                            with cep2: e_tel = st.text_input("Teléfono", value=e_tel_actual, key=f"e_tel_pot_{idx}")
-                            
-                            # SE AGREGÓ CAMPO EMAIL
-                            e_email = st.text_input("Correo Electrónico", value=row.get('Email',''), key=f"e_mail_pot_{idx}")
+                            e_prof = st.text_input("Profesión", value=row.get('Profesion',''), key=f"e_prof_pot_{idx}")
+                            e_cargo = st.text_input("Cargo", value=row.get('Cargo',''), key=f"e_cargo_pot_{idx}")
                             
                         with ce2:
-                            e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_pot_{idx}")
-                            e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_pot_{idx}")
-                            e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_pot_{idx}")
+                            # Pre-seleccionar el país correcto
+                            pais_actual = str(row.get('Pais',''))
+                            idx_pais = 0
+                            for i, p in enumerate(CODIGOS_PAISES):
+                                if pais_actual.lower() in p.lower() and pais_actual != "":
+                                    idx_pais = i
+                                    break
+                                    
+                            e_pais_sel = st.selectbox("País", CODIGOS_PAISES, index=idx_pais, key=f"e_pais_sel_pot_{idx}")
+                            e_ciu = st.text_input("Ciudad", value=row.get('Ciudad',''), key=f"e_ciu_pot_{idx}")
+                            e_tel = st.text_input("Teléfono (Sin código de país)", value=row.get('Telefono',''), key=f"e_tel_pot_{idx}")
+                            e_email = st.text_input("Correo Electrónico", value=row.get('Email',''), key=f"e_mail_pot_{idx}")
                             
                         if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_pot_{idx}"):
-                            if e_pref == "🌎 Otro" or e_tel.strip() == "" or e_tel.startswith("+"):
+                            p_fin, c_fin = extraer_pais_codigo(e_pais_sel)
+                            
+                            # Logica para evitar duplicar el +54
+                            if e_tel.strip() == "" or e_tel.startswith("+") or c_fin == "":
                                 tel_final_edit = e_tel
                             else:
-                                cod_edit = e_pref.split("(")[1].replace(")", "")
-                                tel_final_edit = f"{cod_edit} {e_tel}"
-                                
+                                if c_fin in e_tel:
+                                    tel_final_edit = e_tel
+                                else:
+                                    tel_final_edit = f"{c_fin} {e_tel}"
+                                    
                             df_act = get_data()
                             df_act.at[idx, 'Cliente'] = e_cli
                             df_act.at[idx, 'Empresa'] = e_emp
+                            df_act.at[idx, 'Profesion'] = e_prof
+                            df_act.at[idx, 'Cargo'] = e_cargo
+                            df_act.at[idx, 'Pais'] = p_fin if p_fin != "Otro" else pais_actual
+                            df_act.at[idx, 'Ciudad'] = e_ciu
                             df_act.at[idx, 'Telefono'] = tel_final_edit
                             df_act.at[idx, 'Email'] = e_email
-                            df_act.at[idx, 'Profesion'] = e_prof
-                            df_act.at[idx, 'Pais'] = e_pais
-                            df_act.at[idx, 'N° Cotiz.'] = e_cot
                             conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
                             st.cache_data.clear()
                             st.rerun()
@@ -404,49 +425,57 @@ elif section == "Negociaciones":
                         with ce1:
                             e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_neg_{idx}")
                             e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_neg_{idx}")
-                            
-                            e_tel_actual = str(row.get('Telefono',''))
-                            idx_defecto = 0 if not e_tel_actual.startswith("+") else len(CODIGOS_PAISES)-1 
-                            cep1, cep2 = st.columns([1.2, 2])
-                            with cep1: e_pref = st.selectbox("Cód.", CODIGOS_PAISES, index=idx_defecto, key=f"e_pref_neg_{idx}")
-                            with cep2: e_tel = st.text_input("Teléfono", value=e_tel_actual, key=f"e_tel_neg_{idx}")
-                            
-                            # SE AGREGÓ CAMPO EMAIL
-                            e_email = st.text_input("Correo Electrónico", value=row.get('Email',''), key=f"e_mail_neg_{idx}")
-
+                            e_prof = st.text_input("Profesión", value=row.get('Profesion',''), key=f"e_prof_neg_{idx}")
+                            e_cargo = st.text_input("Cargo", value=row.get('Cargo',''), key=f"e_cargo_neg_{idx}")
                         with ce2:
-                            e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_neg_{idx}")
-                            e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_neg_{idx}")
-                            e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_neg_{idx}")
+                            pais_actual = str(row.get('Pais',''))
+                            idx_pais = 0
+                            for i, p in enumerate(CODIGOS_PAISES):
+                                if pais_actual.lower() in p.lower() and pais_actual != "":
+                                    idx_pais = i
+                                    break
+                                    
+                            e_pais_sel = st.selectbox("País", CODIGOS_PAISES, index=idx_pais, key=f"e_pais_sel_neg_{idx}")
+                            e_ciu = st.text_input("Ciudad", value=row.get('Ciudad',''), key=f"e_ciu_neg_{idx}")
+                            e_tel = st.text_input("Teléfono (Sin código de país)", value=row.get('Telefono',''), key=f"e_tel_neg_{idx}")
+                            e_email = st.text_input("Correo Electrónico", value=row.get('Email',''), key=f"e_mail_neg_{idx}")
                             
                         if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_neg_{idx}"):
-                            if e_pref == "🌎 Otro" or e_tel.strip() == "" or e_tel.startswith("+"):
+                            p_fin, c_fin = extraer_pais_codigo(e_pais_sel)
+                            
+                            if e_tel.strip() == "" or e_tel.startswith("+") or c_fin == "":
                                 tel_final_edit = e_tel
                             else:
-                                cod_edit = e_pref.split("(")[1].replace(")", "")
-                                tel_final_edit = f"{cod_edit} {e_tel}"
-                                
+                                if c_fin in e_tel:
+                                    tel_final_edit = e_tel
+                                else:
+                                    tel_final_edit = f"{c_fin} {e_tel}"
+                                    
                             df_act = get_data()
                             df_act.at[idx, 'Cliente'] = e_cli
                             df_act.at[idx, 'Empresa'] = e_emp
+                            df_act.at[idx, 'Profesion'] = e_prof
+                            df_act.at[idx, 'Cargo'] = e_cargo
+                            df_act.at[idx, 'Pais'] = p_fin if p_fin != "Otro" else pais_actual
+                            df_act.at[idx, 'Ciudad'] = e_ciu
                             df_act.at[idx, 'Telefono'] = tel_final_edit
                             df_act.at[idx, 'Email'] = e_email
-                            df_act.at[idx, 'Profesion'] = e_prof
-                            df_act.at[idx, 'Pais'] = e_pais
-                            df_act.at[idx, 'N° Cotiz.'] = e_cot
                             conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
                             st.cache_data.clear()
                             st.rerun()
 
                 col1, col2 = st.columns(2)
                 with col1:
+                    st.markdown(f"**Profesión:** {row.get('Profesion', '')} | **Cargo:** {row.get('Cargo', '')}")
+                    st.markdown(f"**Empresa:** {row.get('Empresa', '')}")
+                    st.markdown(f"**País:** {row.get('Pais', '')} | **Ciudad:** {row.get('Ciudad', '')}")
                     st.markdown(f"**Teléfono:** {row.get('Telefono', '')}")
                     st.markdown(f"**Email:** {row.get('Email', '')}")
-                    st.markdown(f"**Empresa:** {row.get('Empresa', '')}")
                 with col2:
                     st.markdown(f"**N° Cotiz.:** {row.get('N° Cotiz.', '')}")
                     st.markdown(f"**Próxima llamada:** {row.get('Proxima llamada', '')}")
-                    st.markdown(f"**Asesor:** {row.get('Asesor', '')}")
+                    st.markdown(f"**Asesor comercial:** {row.get('Asesor', '')}")
+                    st.markdown(f"**Estado Actual:** {row.get('Estado_Nego', '')}")
                 
                 if 'Link_PDF' in row and str(row.get('Link_PDF', '')).strip() != "":
                     st.link_button("📄 Abrir Presupuesto PDF", row['Link_PDF'], use_container_width=True)
@@ -555,29 +584,25 @@ elif section == "Agregar Cliente":
     with col1:
         cliente = st.text_input("Nombre del contacto *", key=f"cli_{fk}")
         empresa = st.text_input("Empresa", key=f"emp_{fk}")
+        profesion = st.text_input("Profesión", key=f"prof_{fk}")
+        cargo = st.text_input("Cargo", key=f"cargo_{fk}")
         
-        col_pref, col_tel = st.columns([1.2, 2])
-        with col_pref:
-            prefijo = st.selectbox("Cód. País", CODIGOS_PAISES, key=f"pref_{fk}")
-        with col_tel:
-            telefono = st.text_input("Teléfono", key=f"tel_{fk}")
-            
-        # SE AGREGÓ CAMPO EMAIL
+        # --- PAIS INTELIGENTE ---
+        pais_seleccionado = st.selectbox("País (Seleccione para autocompletar código)", CODIGOS_PAISES, key=f"pais_sel_{fk}")
+        ciudad = st.text_input("Ciudad", key=f"ciu_{fk}")
+        
+    with col2:
+        telefono = st.text_input("Teléfono (Sin código de país)", key=f"tel_{fk}")
         email = st.text_input("Correo Electrónico", key=f"mail_{fk}")
         
         col_monto, col_moneda = st.columns([2, 1]) 
         with col_monto:
-            monto_valor = st.text_input("Monto numérico (Vacío si es Potencial)", key=f"mon_{fk}")
+            monto_valor = st.text_input("Monto numérico (Vacío si Potencial)", key=f"mon_{fk}")
         with col_moneda:
             moneda = st.selectbox("Moneda", ["USD", "ARS"], key=f"div_{fk}")
             
         proxima_llamada = st.date_input("Próxima llamada", key=f"prox_{fk}")
-        
-    with col2:
-        profesion = st.text_input("Profesión / Cargo", key=f"prof_{fk}")
-        pais = st.text_input("País / Ciudad", key=f"pais_{fk}")
         cotizacion = st.text_input("N° Cotiz. (Dejar vacío para autogenerar)", key=f"cot_{fk}")
-        nota_inicial = st.text_area("Nota Inicial", key=f"notain_{fk}")
         
         vendedores = list(USUARIOS.keys())
         try:
@@ -588,10 +613,11 @@ elif section == "Agregar Cliente":
         if st.session_state.usuario_actual == ADMINISTRADOR:
             asesor = st.selectbox("Asesor asignado", vendedores, index=index_vendedor, key=f"ase_{fk}")
         else:
-            st.markdown(f"**Asesor asignado:** {st.session_state.usuario_actual}")
+            st.markdown(f"<br>**Asesor asignado:** {st.session_state.usuario_actual}", unsafe_allow_html=True)
             asesor = st.session_state.usuario_actual
         
     st.markdown("---")
+    nota_inicial = st.text_area("Nota Inicial del contacto", key=f"notain_{fk}")
     link_pdf = st.text_input("🔗 Link al Presupuesto", placeholder="Enlace a Drive/Dropbox...", key=f"pdf_{fk}")    
         
     st.markdown("<br>", unsafe_allow_html=True)
@@ -611,11 +637,13 @@ elif section == "Agregar Cliente":
                 if estado_inicial == "En Proceso" and cotizacion_final == "":
                     cotizacion_final = generar_numero_cotizacion(df_actual_temp)
                 
-                if prefijo == "🌎 Otro" or telefono.strip() == "":
+                # Magia del país y teléfono
+                pais_final, cod_final = extraer_pais_codigo(pais_seleccionado)
+                
+                if telefono.strip() == "" or telefono.startswith("+") or cod_final == "":
                     tel_final = telefono
                 else:
-                    cod = prefijo.split("(")[1].replace(")", "")
-                    tel_final = f"{cod} {telefono}"
+                    tel_final = f"{cod_final} {telefono}"
 
                 texto_nota = f"[{fecha_hoy}] 📝 {nota_inicial}" if nota_inicial.strip() else ""
 
@@ -623,8 +651,14 @@ elif section == "Agregar Cliente":
                     "Creado": fecha_hoy,
                     "Cliente": cliente,
                     "Profesion": profesion,
-                    "Direccion": "", "Pais": pais, "Ciudad": "", "Estado /Prov.": "",
-                    "Empresa": empresa, "Cargo": "", "Telefono": tel_final, "Email": email,
+                    "Direccion": "", 
+                    "Pais": pais_final, 
+                    "Ciudad": ciudad, 
+                    "Estado /Prov.": "",
+                    "Empresa": empresa, 
+                    "Cargo": cargo, 
+                    "Telefono": tel_final, 
+                    "Email": email,
                     "N° Cotiz.": cotizacion_final,
                     "Monto USD / $": monto_final,
                     "Notas": texto_nota,
@@ -698,36 +732,42 @@ elif section == "Calendario":
                         with ce1:
                             e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_cal_{idx}")
                             e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_cal_{idx}")
-                            
-                            e_tel_actual = str(row.get('Telefono',''))
-                            idx_defecto = 0 if not e_tel_actual.startswith("+") else len(CODIGOS_PAISES)-1 
-                            cep1, cep2 = st.columns([1.2, 2])
-                            with cep1: e_pref = st.selectbox("Cód.", CODIGOS_PAISES, index=idx_defecto, key=f"e_pref_cal_{idx}")
-                            with cep2: e_tel = st.text_input("Teléfono", value=e_tel_actual, key=f"e_tel_cal_{idx}")
-                            
-                            # SE AGREGÓ CAMPO EMAIL
-                            e_email = st.text_input("Correo Electrónico", value=row.get('Email',''), key=f"e_mail_cal_{idx}")
+                            e_prof = st.text_input("Profesión", value=row.get('Profesion',''), key=f"e_prof_cal_{idx}")
+                            e_cargo = st.text_input("Cargo", value=row.get('Cargo',''), key=f"e_cargo_cal_{idx}")
                             
                         with ce2:
-                            e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_cal_{idx}")
-                            e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_cal_{idx}")
-                            e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_cal_{idx}")
+                            pais_actual = str(row.get('Pais',''))
+                            idx_pais = 0
+                            for i, p in enumerate(CODIGOS_PAISES):
+                                if pais_actual.lower() in p.lower() and pais_actual != "":
+                                    idx_pais = i
+                                    break
+                                    
+                            e_pais_sel = st.selectbox("País", CODIGOS_PAISES, index=idx_pais, key=f"e_pais_sel_cal_{idx}")
+                            e_ciu = st.text_input("Ciudad", value=row.get('Ciudad',''), key=f"e_ciu_cal_{idx}")
+                            e_tel = st.text_input("Teléfono (Sin código de país)", value=row.get('Telefono',''), key=f"e_tel_cal_{idx}")
+                            e_email = st.text_input("Correo Electrónico", value=row.get('Email',''), key=f"e_mail_cal_{idx}")
                             
                         if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_cal_{idx}"):
-                            if e_pref == "🌎 Otro" or e_tel.strip() == "" or e_tel.startswith("+"):
+                            p_fin, c_fin = extraer_pais_codigo(e_pais_sel)
+                            
+                            if e_tel.strip() == "" or e_tel.startswith("+") or c_fin == "":
                                 tel_final_edit = e_tel
                             else:
-                                cod_edit = e_pref.split("(")[1].replace(")", "")
-                                tel_final_edit = f"{cod_edit} {e_tel}"
-                                
+                                if c_fin in e_tel:
+                                    tel_final_edit = e_tel
+                                else:
+                                    tel_final_edit = f"{c_fin} {e_tel}"
+                                    
                             df_act = get_data()
                             df_act.at[idx, 'Cliente'] = e_cli
                             df_act.at[idx, 'Empresa'] = e_emp
+                            df_act.at[idx, 'Profesion'] = e_prof
+                            df_act.at[idx, 'Cargo'] = e_cargo
+                            df_act.at[idx, 'Pais'] = p_fin if p_fin != "Otro" else pais_actual
+                            df_act.at[idx, 'Ciudad'] = e_ciu
                             df_act.at[idx, 'Telefono'] = tel_final_edit
                             df_act.at[idx, 'Email'] = e_email
-                            df_act.at[idx, 'Profesion'] = e_prof
-                            df_act.at[idx, 'Pais'] = e_pais
-                            df_act.at[idx, 'N° Cotiz.'] = e_cot
                             conn.update(worksheet=worksheet_name, data=df_act, spreadsheet=GSHEET_URL)
                             st.cache_data.clear()
                             st.rerun()
