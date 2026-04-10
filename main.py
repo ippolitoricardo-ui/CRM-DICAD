@@ -12,24 +12,27 @@ st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 USUARIOS = st.secrets["passwords"]
 ADMINISTRADOR = "Ricardo Ippolito"
 
-# Lista de prefijos
+# Lista completa de 35 países de América + España, Portugal, Mozambique + Otro
 CODIGOS_PAISES = [
-    "🇦🇷 Argentina (+54)", "🇧🇴 Bolivia (+591)", "🇧🇷 Brasil (+55)", "🇨🇦 Canadá (+1)",
+    "🇦🇬 Antigua y Barbuda (+1)", "🇦🇷 Argentina (+54)", "🇧🇸 Bahamas (+1)", "🇧🇧 Barbados (+1)",
+    "🇧🇿 Belice (+501)", "🇧🇴 Bolivia (+591)", "🇧🇷 Brasil (+55)", "🇨🇦 Canadá (+1)",
     "🇨🇱 Chile (+56)", "🇨🇴 Colombia (+57)", "🇨🇷 Costa Rica (+506)", "🇨🇺 Cuba (+53)",
-    "🇪🇨 Ecuador (+593)", "🇸🇻 El Salvador (+503)", "🇪🇸 España (+34)", "🇺🇸 Estados Unidos (+1)",
-    "🇬🇹 Guatemala (+502)", "🇭🇳 Honduras (+504)", "🇲🇽 México (+52)", "🇲🇿 Mozambique (+258)",
-    "🇳🇮 Nicaragua (+505)", "🇵🇦 Panamá (+507)", "🇵🇾 Paraguay (+595)", "🇵🇪 Perú (+51)",
-    "🇵🇹 Portugal (+351)", "🇩🇴 Rep. Dominicana (+1)", "🇺🇾 Uruguay (+598)", "🇻🇪 Venezuela (+58)",
-    "🌎 Otro"
+    "🇩🇲 Dominica (+1)", "🇪🇨 Ecuador (+593)", "🇸🇻 El Salvador (+503)", "🇪🇸 España (+34)",
+    "🇺🇸 Estados Unidos (+1)", "🇬🇩 Granada (+1)", "🇬🇹 Guatemala (+502)", "🇬🇾 Guyana (+592)",
+    "🇭🇹 Haití (+509)", "🇭🇳 Honduras (+504)", "🇯🇲 Jamaica (+1)", "🇲🇽 México (+52)",
+    "🇲🇿 Mozambique (+258)", "🇳🇮 Nicaragua (+505)", "🇵🇦 Panamá (+507)", "🇵🇾 Paraguay (+595)",
+    "🇵🇪 Perú (+51)", "🇵🇹 Portugal (+351)", "🇩🇴 Rep. Dominicana (+1)", "🇰🇳 San Cristóbal y Nieves (+1)",
+    "🇻🇨 San Vicente y las Granadinas (+1)", "🇱🇨 Santa Lucía (+1)", "🇸🇷 Surinam (+597)",
+    "🇹🇹 Trinidad y Tobago (+1)", "🇺🇾 Uruguay (+598)", "🇻🇪 Venezuela (+58)", "🌎 Otro"
 ]
 
 def extraer_pais_codigo(seleccion):
     if seleccion == "🌎 Otro":
         return "Otro", ""
     try:
-        # Ej: "🇦🇷 Argentina (+54)" -> divide en la bandera y el resto
+        # Divide la bandera del texto
         partes = seleccion.split(" ", 1)
-        # partes[1] es "Argentina (+54)" -> divide en nombre y codigo
+        # Divide el nombre del país del código entre paréntesis
         sub_partes = partes[1].split(" (")
         pais = sub_partes[0].strip()
         codigo = sub_partes[1].replace(")", "").strip()
@@ -221,7 +224,6 @@ if section == "Potenciales":
                             e_cargo = st.text_input("Cargo", value=row.get('Cargo',''), key=f"e_cargo_pot_{idx}")
                             
                         with ce2:
-                            # Pre-seleccionar el país correcto
                             pais_actual = str(row.get('Pais',''))
                             idx_pais = 0
                             for i, p in enumerate(CODIGOS_PAISES):
@@ -237,7 +239,6 @@ if section == "Potenciales":
                         if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_pot_{idx}"):
                             p_fin, c_fin = extraer_pais_codigo(e_pais_sel)
                             
-                            # Logica para evitar duplicar el +54
                             if e_tel.strip() == "" or e_tel.startswith("+") or c_fin == "":
                                 tel_final_edit = e_tel
                             else:
@@ -427,6 +428,7 @@ elif section == "Negociaciones":
                             e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_neg_{idx}")
                             e_prof = st.text_input("Profesión", value=row.get('Profesion',''), key=f"e_prof_neg_{idx}")
                             e_cargo = st.text_input("Cargo", value=row.get('Cargo',''), key=f"e_cargo_neg_{idx}")
+                            
                         with ce2:
                             pais_actual = str(row.get('Pais',''))
                             idx_pais = 0
@@ -584,22 +586,23 @@ elif section == "Agregar Cliente":
     with col1:
         cliente = st.text_input("Nombre del contacto *", key=f"cli_{fk}")
         empresa = st.text_input("Empresa", key=f"emp_{fk}")
-        profesion = st.text_input("Profesión", key=f"prof_{fk}")
-        cargo = st.text_input("Cargo", key=f"cargo_{fk}")
         
-        # --- PAIS INTELIGENTE ---
+        # --- PAÍS INTELIGENTE NUEVO CONTACTO ---
         pais_seleccionado = st.selectbox("País (Seleccione para autocompletar código)", CODIGOS_PAISES, key=f"pais_sel_{fk}")
         ciudad = st.text_input("Ciudad", key=f"ciu_{fk}")
-        
-    with col2:
-        telefono = st.text_input("Teléfono (Sin código de país)", key=f"tel_{fk}")
-        email = st.text_input("Correo Electrónico", key=f"mail_{fk}")
         
         col_monto, col_moneda = st.columns([2, 1]) 
         with col_monto:
             monto_valor = st.text_input("Monto numérico (Vacío si Potencial)", key=f"mon_{fk}")
         with col_moneda:
             moneda = st.selectbox("Moneda", ["USD", "ARS"], key=f"div_{fk}")
+            
+    with col2:
+        profesion = st.text_input("Profesión", key=f"prof_{fk}")
+        cargo = st.text_input("Cargo", key=f"cargo_{fk}")
+        
+        telefono = st.text_input("Teléfono (Sin código de país)", key=f"tel_{fk}")
+        email = st.text_input("Correo Electrónico", key=f"mail_{fk}")
             
         proxima_llamada = st.date_input("Próxima llamada", key=f"prox_{fk}")
         cotizacion = st.text_input("N° Cotiz. (Dejar vacío para autogenerar)", key=f"cot_{fk}")
@@ -637,7 +640,6 @@ elif section == "Agregar Cliente":
                 if estado_inicial == "En Proceso" and cotizacion_final == "":
                     cotizacion_final = generar_numero_cotizacion(df_actual_temp)
                 
-                # Magia del país y teléfono
                 pais_final, cod_final = extraer_pais_codigo(pais_seleccionado)
                 
                 if telefono.strip() == "" or telefono.startswith("+") or cod_final == "":
