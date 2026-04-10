@@ -39,7 +39,6 @@ if not st.session_state.autenticado:
 
 # --- SIDEBAR ---
 with st.sidebar:
-    # Retiramos el "* {color: white}" para que los botones y el menú se vean bien
     st.markdown("""
         <style>
         [data-testid="stSidebar"] {background-color: #2E3E57 !important;}
@@ -54,7 +53,6 @@ with st.sidebar:
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True) 
     
-    # EL MENÚ (Ahora con fondo gris claro y letras negras para resaltar)
     section = option_menu(
         menu_title=None, 
         options=["Potenciales", "Negociaciones", "Agregar Cliente", "Calendario"],
@@ -112,10 +110,8 @@ def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_obj, fecha_a
     nueva_fecha_str = nueva_fecha_obj.strftime("%d/%m/%Y")
 
     texto_agregado = ""
-    
     if nueva_nota.strip():
         texto_agregado += f"[{fecha_hoy}] 📝 {nueva_nota}"
-        
     if nueva_fecha_str != str(fecha_anterior_str):
         if texto_agregado:
             texto_agregado += f" | 📅 Reprogramado para: {nueva_fecha_str}"
@@ -207,7 +203,6 @@ if section == "Potenciales":
                     df_actual.at[idx, 'Estado_Nego'] = "En Proceso"
                     if nuevo_monto_prom.strip(): df_actual.at[idx, 'Monto USD / $'] = nuevo_monto_prom
                     if nuevo_link_prom.strip(): df_actual.at[idx, 'Link_PDF'] = nuevo_link_prom
-                    
                     conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
                     st.cache_data.clear()
                     st.rerun()
@@ -298,15 +293,30 @@ elif section == "Negociaciones":
         else:
             df_filtrado = df_tablero
 
+        # DIBUJO DE TARJETAS DE NEGOCIACIÓN
         for idx, row in df_filtrado.iterrows():
+            estado_actual = row.get('Estado_Nego', 'En Proceso')
+            
+            # --- MEJORA: COLORES Y BADGES SEGÚN EL ESTADO ---
+            if estado_actual == 'Ganada':
+                borde_color = "#28a745"
+                badge = "<span style='float:right; background-color:#28a745; color:white; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:bold;'>✅ GANADA</span>"
+            elif estado_actual == 'Perdida':
+                borde_color = "#dc3545"
+                badge = "<span style='float:right; background-color:#dc3545; color:white; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:bold;'>❌ PERDIDA</span>"
+            else:
+                borde_color = "#ffc107"
+                badge = "<span style='float:right; background-color:#ffc107; color:black; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:bold;'>⏳ EN PROCESO</span>"
+
             with st.container():
                 st.markdown(
                     f"""
                     <div class="crm-neg-card" style="background:white;padding:1.3em;border-radius:12px;
-                    margin-bottom:0.6em; box-shadow:0 1px 8px #d0d6e1; color:black !important;">
+                    margin-bottom:0.6em; box-shadow:0 1px 8px #d0d6e1; border-left: 6px solid {borde_color}; color:black !important;">
+                        {badge}
                         <b>Cliente:</b> {row.get('Cliente', '')} <br>
                         <b>Empresa:</b> {row.get('Empresa', '')} <br>
-                        <b>Monto USD / $:</b> <span style="color:#2261b6">{row.get('Monto USD / $', '')}</span>
+                        <b>Monto USD / $:</b> <span style="color:#2261b6; font-weight:bold;">{row.get('Monto USD / $', '')}</span>
                     </div>
                     """, unsafe_allow_html=True
                 )
@@ -367,17 +377,46 @@ elif section == "Negociaciones":
                 
                 st.markdown("---")
                 st.markdown("**💰 Resolución de la Negociación:**")
-                col_g, col_p = st.columns(2)
-                with col_g:
-                    if st.button("✅ Marcar como GANADA", key=f"ganar_{idx}", use_container_width=True):
-                        update_estado(idx, "Ganada")
+                
+                # --- MEJORA: Lógica de Botones de Resolución ---
+                if estado_actual in ['Ganada', 'Perdida']:
+                    st.info(f"Esta negociación ya se encuentra cerrada como **{estado_actual.upper()}**.")
+                    if st.button("🔄 Reabrir Negociación a 'En Proceso'", key=f"reabrir_{idx}"):
+                        df_actual = get_data()
+                        df_actual.at[idx, 'Estado_Nego'] = "En Proceso"
+                        conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
                         st.cache_data.clear()
                         st.rerun()
-                with col_p:
-                    if st.button("❌ Marcar como PERDIDA", key=f"perder_{idx}", use_container_width=True):
-                        update_estado(idx, "Perdida")
-                        st.cache_data.clear()
-                        st.rerun()    
+                else:
+                    col_g, col_p = st.columns(2)
+                    with col_g:
+                        if st.button("✅ Marcar como GANADA", key=f"ganar_{idx}", use_container_width=True):
+                            df_actual = get_data()
+                            df_actual.at[idx, 'Estado_Nego'] = "Ganada"
+                            fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+                            texto = f"[{fecha_hoy}] 🏆 NEGOCIACIÓN CERRADA COMO GANADA"
+                            nota_previa = str(df_actual.at[idx, 'Notas'])
+                            if nota_previa.strip() == "" or nota_previa.lower() == "nan":
+                                df_actual.at[idx, 'Notas'] = texto
+                            else:
+                                df_actual.at[idx, 'Notas'] = f"{nota_previa}\n{texto}"
+                            conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
+                            st.cache_data.clear()
+                            st.rerun()
+                    with col_p:
+                        if st.button("❌ Marcar como PERDIDA", key=f"perder_{idx}", use_container_width=True):
+                            df_actual = get_data()
+                            df_actual.at[idx, 'Estado_Nego'] = "Perdida"
+                            fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+                            texto = f"[{fecha_hoy}] ❌ NEGOCIACIÓN MARCADA COMO PERDIDA"
+                            nota_previa = str(df_actual.at[idx, 'Notas'])
+                            if nota_previa.strip() == "" or nota_previa.lower() == "nan":
+                                df_actual.at[idx, 'Notas'] = texto
+                            else:
+                                df_actual.at[idx, 'Notas'] = f"{nota_previa}\n{texto}"
+                            conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
+                            st.cache_data.clear()
+                            st.rerun()    
 
 # --- PESTAÑA 3: AGREGAR CLIENTE ---
 elif section == "Agregar Cliente":
@@ -462,7 +501,6 @@ elif section == "Agregar Cliente":
 
 # --- PESTAÑA 4: CALENDARIO ---
 elif section == "Calendario":
-    # Agregamos el botón de refresco al lado del título
     col_t1, col_t2 = st.columns([4, 1])
     with col_t1:
         st.markdown("## 📅 Agenda de Seguimientos")
