@@ -8,9 +8,20 @@ import plotly.express as px
 # --- CONFIGURACION DE PÁGINA Y ESTILOS ---
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
-# --- 1. BASE DE DATOS DE USUARIOS (Ocultas por seguridad) ---
+# --- 1. BASE DE DATOS DE USUARIOS Y PAÍSES ---
 USUARIOS = st.secrets["passwords"]
 ADMINISTRADOR = "Ricardo Ippolito"
+
+# Lista completa de prefijos
+CODIGOS_PAISES = [
+    "🇦🇷 Argentina (+54)", "🇧🇴 Bolivia (+591)", "🇧🇷 Brasil (+55)", "🇨🇦 Canadá (+1)",
+    "🇨🇱 Chile (+56)", "🇨🇴 Colombia (+57)", "🇨🇷 Costa Rica (+506)", "🇨🇺 Cuba (+53)",
+    "🇪🇨 Ecuador (+593)", "🇸🇻 El Salvador (+503)", "🇪🇸 España (+34)", "🇺🇸 Estados Unidos (+1)",
+    "🇬🇹 Guatemala (+502)", "🇭🇳 Honduras (+504)", "🇲🇽 México (+52)", "🇲🇿 Mozambique (+258)",
+    "🇳🇮 Nicaragua (+505)", "🇵🇦 Panamá (+507)", "🇵🇾 Paraguay (+595)", "🇵🇪 Perú (+51)",
+    "🇵🇹 Portugal (+351)", "🇩🇴 Rep. Dominicana (+1)", "🇺🇾 Uruguay (+598)", "🇻🇪 Venezuela (+58)",
+    "🌎 Otro"
+]
 
 # --- 2. GESTIÓN DE SESIÓN (LOGIN) ---
 if 'autenticado' not in st.session_state:
@@ -81,9 +92,10 @@ GSHEET_URL = st.secrets.get("SHEET_URL", "https://docs.google.com/spreadsheets/d
 conn = st.connection("gsheets", type=GSheetsConnection)
 worksheet_name = "Central Negociaciones"
 
+# --- SE AGREGÓ LA COLUMNA EMAIL ---
 COLUMNS = [
     "Cliente", "Profesion", "Direccion", "Pais", "Ciudad", "Estado /Prov.", "Empresa", 
-    "Cargo", "Telefono", "N° Cotiz.", "Monto USD / $", "Notas", "Proxima llamada", 
+    "Cargo", "Telefono", "Email", "N° Cotiz.", "Monto USD / $", "Notas", "Proxima llamada", 
     "Creado", "Asesor", "Estado_Nego", "Link_PDF"
 ]
 
@@ -131,24 +143,18 @@ def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_obj, fecha_a
     df_actual.at[indice, 'Proxima llamada'] = nueva_fecha_str
     conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
 
-# --- NUEVA FUNCIÓN: GENERADOR AUTONUMÉRICO DE COTIZACIONES ---
 def generar_numero_cotizacion(df):
     numeros = []
     for val in df['N° Cotiz.'].dropna():
-        # Extraemos solo los dígitos (por si alguien escribió "Presupuesto 100")
         digitos = ''.join(filter(str.isdigit, str(val)))
         if digitos:
             numeros.append(int(digitos))
-    
     if not numeros:
         return "001000"
-    
     maximo = max(numeros)
     siguiente = maximo + 1
-    # Aseguramos que el piso siempre sea 1000
     if siguiente < 1000:
         siguiente = 1000
-        
     return f"{siguiente:06d}"
 
 df = get_data()
@@ -185,7 +191,8 @@ if section == "Potenciales":
                     <div style="background:white;padding:1em;border-radius:10px; border-left: 5px solid #6c757d;
                     margin-bottom:0.5em; box-shadow:0 1px 4px #d0d6e1; color:black !important;">
                         <b>Cliente:</b> {row.get('Cliente', '')} | <b>Empresa:</b> {row.get('Empresa', '')} <br>
-                        <b>Teléfono:</b> {row.get('Telefono', '')} | <b>Próx. Llamada:</b> {row.get('Proxima llamada', '')}
+                        <b>Teléfono:</b> {row.get('Telefono', '')} | <b>Email:</b> {row.get('Email', '')} <br>
+                        <b>Próx. Llamada:</b> {row.get('Proxima llamada', '')}
                     </div>
                     """, unsafe_allow_html=True
                 )
@@ -197,16 +204,33 @@ if section == "Potenciales":
                         with ce1:
                             e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_pot_{idx}")
                             e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_pot_{idx}")
-                            e_tel = st.text_input("Teléfono", value=row.get('Telefono',''), key=f"e_tel_pot_{idx}")
+                            
+                            e_tel_actual = str(row.get('Telefono',''))
+                            idx_defecto = 0 if not e_tel_actual.startswith("+") else len(CODIGOS_PAISES)-1 
+                            cep1, cep2 = st.columns([1.2, 2])
+                            with cep1: e_pref = st.selectbox("Cód.", CODIGOS_PAISES, index=idx_defecto, key=f"e_pref_pot_{idx}")
+                            with cep2: e_tel = st.text_input("Teléfono", value=e_tel_actual, key=f"e_tel_pot_{idx}")
+                            
+                            # SE AGREGÓ CAMPO EMAIL
+                            e_email = st.text_input("Correo Electrónico", value=row.get('Email',''), key=f"e_mail_pot_{idx}")
+                            
                         with ce2:
                             e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_pot_{idx}")
                             e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_pot_{idx}")
                             e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_pot_{idx}")
+                            
                         if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_pot_{idx}"):
+                            if e_pref == "🌎 Otro" or e_tel.strip() == "" or e_tel.startswith("+"):
+                                tel_final_edit = e_tel
+                            else:
+                                cod_edit = e_pref.split("(")[1].replace(")", "")
+                                tel_final_edit = f"{cod_edit} {e_tel}"
+                                
                             df_act = get_data()
                             df_act.at[idx, 'Cliente'] = e_cli
                             df_act.at[idx, 'Empresa'] = e_emp
-                            df_act.at[idx, 'Telefono'] = e_tel
+                            df_act.at[idx, 'Telefono'] = tel_final_edit
+                            df_act.at[idx, 'Email'] = e_email
                             df_act.at[idx, 'Profesion'] = e_prof
                             df_act.at[idx, 'Pais'] = e_pais
                             df_act.at[idx, 'N° Cotiz.'] = e_cot
@@ -251,7 +275,6 @@ if section == "Potenciales":
                         if nuevo_monto_prom.strip(): df_actual.at[idx, 'Monto USD / $'] = nuevo_monto_prom
                         if nuevo_link_prom.strip(): df_actual.at[idx, 'Link_PDF'] = nuevo_link_prom
                         
-                        # --- ASIGNACIÓN AUTONUMÉRICA AL PROMOVER ---
                         if not str(df_actual.at[idx, 'N° Cotiz.']).strip():
                             df_actual.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_actual)
                             
@@ -381,16 +404,33 @@ elif section == "Negociaciones":
                         with ce1:
                             e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_neg_{idx}")
                             e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_neg_{idx}")
-                            e_tel = st.text_input("Teléfono", value=row.get('Telefono',''), key=f"e_tel_neg_{idx}")
+                            
+                            e_tel_actual = str(row.get('Telefono',''))
+                            idx_defecto = 0 if not e_tel_actual.startswith("+") else len(CODIGOS_PAISES)-1 
+                            cep1, cep2 = st.columns([1.2, 2])
+                            with cep1: e_pref = st.selectbox("Cód.", CODIGOS_PAISES, index=idx_defecto, key=f"e_pref_neg_{idx}")
+                            with cep2: e_tel = st.text_input("Teléfono", value=e_tel_actual, key=f"e_tel_neg_{idx}")
+                            
+                            # SE AGREGÓ CAMPO EMAIL
+                            e_email = st.text_input("Correo Electrónico", value=row.get('Email',''), key=f"e_mail_neg_{idx}")
+
                         with ce2:
                             e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_neg_{idx}")
                             e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_neg_{idx}")
                             e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_neg_{idx}")
+                            
                         if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_neg_{idx}"):
+                            if e_pref == "🌎 Otro" or e_tel.strip() == "" or e_tel.startswith("+"):
+                                tel_final_edit = e_tel
+                            else:
+                                cod_edit = e_pref.split("(")[1].replace(")", "")
+                                tel_final_edit = f"{cod_edit} {e_tel}"
+                                
                             df_act = get_data()
                             df_act.at[idx, 'Cliente'] = e_cli
                             df_act.at[idx, 'Empresa'] = e_emp
-                            df_act.at[idx, 'Telefono'] = e_tel
+                            df_act.at[idx, 'Telefono'] = tel_final_edit
+                            df_act.at[idx, 'Email'] = e_email
                             df_act.at[idx, 'Profesion'] = e_prof
                             df_act.at[idx, 'Pais'] = e_pais
                             df_act.at[idx, 'N° Cotiz.'] = e_cot
@@ -401,12 +441,12 @@ elif section == "Negociaciones":
                 col1, col2 = st.columns(2)
                 with col1:
                     st.markdown(f"**Teléfono:** {row.get('Telefono', '')}")
+                    st.markdown(f"**Email:** {row.get('Email', '')}")
                     st.markdown(f"**Empresa:** {row.get('Empresa', '')}")
-                    st.markdown(f"**N° Cotiz.:** {row.get('N° Cotiz.', '')}")
                 with col2:
+                    st.markdown(f"**N° Cotiz.:** {row.get('N° Cotiz.', '')}")
                     st.markdown(f"**Próxima llamada:** {row.get('Proxima llamada', '')}")
-                    st.markdown(f"**Asesor comercial:** {row.get('Asesor', '')}")
-                    st.markdown(f"**Estado Actual:** {row.get('Estado_Nego', '')}")
+                    st.markdown(f"**Asesor:** {row.get('Asesor', '')}")
                 
                 if 'Link_PDF' in row and str(row.get('Link_PDF', '')).strip() != "":
                     st.link_button("📄 Abrir Presupuesto PDF", row['Link_PDF'], use_container_width=True)
@@ -515,7 +555,15 @@ elif section == "Agregar Cliente":
     with col1:
         cliente = st.text_input("Nombre del contacto *", key=f"cli_{fk}")
         empresa = st.text_input("Empresa", key=f"emp_{fk}")
-        telefono = st.text_input("Teléfono", key=f"tel_{fk}")
+        
+        col_pref, col_tel = st.columns([1.2, 2])
+        with col_pref:
+            prefijo = st.selectbox("Cód. País", CODIGOS_PAISES, key=f"pref_{fk}")
+        with col_tel:
+            telefono = st.text_input("Teléfono", key=f"tel_{fk}")
+            
+        # SE AGREGÓ CAMPO EMAIL
+        email = st.text_input("Correo Electrónico", key=f"mail_{fk}")
         
         col_monto, col_moneda = st.columns([2, 1]) 
         with col_monto:
@@ -528,7 +576,6 @@ elif section == "Agregar Cliente":
     with col2:
         profesion = st.text_input("Profesión / Cargo", key=f"prof_{fk}")
         pais = st.text_input("País / Ciudad", key=f"pais_{fk}")
-        # --- AHORA ES OPCIONAL PARA AUTOGENERAR ---
         cotizacion = st.text_input("N° Cotiz. (Dejar vacío para autogenerar)", key=f"cot_{fk}")
         nota_inicial = st.text_area("Nota Inicial", key=f"notain_{fk}")
         
@@ -560,11 +607,16 @@ elif section == "Agregar Cliente":
                 fecha_hoy = datetime.now().strftime("%d/%m/%Y")
                 estado_inicial = "Potencial" if "Potencial" in tipo_contacto else "En Proceso"
                 
-                # --- ASIGNACIÓN AUTONUMÉRICA AL CREAR NUEVO CLIENTE ---
                 cotizacion_final = cotizacion.strip()
                 if estado_inicial == "En Proceso" and cotizacion_final == "":
                     cotizacion_final = generar_numero_cotizacion(df_actual_temp)
                 
+                if prefijo == "🌎 Otro" or telefono.strip() == "":
+                    tel_final = telefono
+                else:
+                    cod = prefijo.split("(")[1].replace(")", "")
+                    tel_final = f"{cod} {telefono}"
+
                 texto_nota = f"[{fecha_hoy}] 📝 {nota_inicial}" if nota_inicial.strip() else ""
 
                 nuevo_dato = pd.DataFrame([{
@@ -572,7 +624,7 @@ elif section == "Agregar Cliente":
                     "Cliente": cliente,
                     "Profesion": profesion,
                     "Direccion": "", "Pais": pais, "Ciudad": "", "Estado /Prov.": "",
-                    "Empresa": empresa, "Cargo": "", "Telefono": telefono,
+                    "Empresa": empresa, "Cargo": "", "Telefono": tel_final, "Email": email,
                     "N° Cotiz.": cotizacion_final,
                     "Monto USD / $": monto_final,
                     "Notas": texto_nota,
@@ -634,7 +686,7 @@ elif section == "Calendario":
                         f"""
                         <div style="background-color: #2E3E57; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #FF6600;">
                             <h4 style="color: white; margin: 0;">📅 {fecha_texto} | {cliente} <span style="font-size: 14px; font-weight: normal; background-color: #556B8D; padding: 3px 8px; border-radius: 5px; margin-left: 10px;">{etiqueta}</span></h4>
-                            <p style="color: #d0d6e1; margin: 5px 0 0 0;">📞 Tel: <b>{row.get('Telefono', '')}</b> | 👔 Asesor: {row.get('Asesor', '')}</p>
+                            <p style="color: #d0d6e1; margin: 5px 0 0 0;">📞 Tel: <b>{row.get('Telefono', '')}</b> | ✉️ <b>{row.get('Email', 'N/A')}</b> | 👔 Asesor: {row.get('Asesor', '')}</p>
                         </div>
                         """, 
                         unsafe_allow_html=True
@@ -646,16 +698,33 @@ elif section == "Calendario":
                         with ce1:
                             e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_cal_{idx}")
                             e_emp = st.text_input("Empresa", value=row.get('Empresa',''), key=f"e_emp_cal_{idx}")
-                            e_tel = st.text_input("Teléfono", value=row.get('Telefono',''), key=f"e_tel_cal_{idx}")
+                            
+                            e_tel_actual = str(row.get('Telefono',''))
+                            idx_defecto = 0 if not e_tel_actual.startswith("+") else len(CODIGOS_PAISES)-1 
+                            cep1, cep2 = st.columns([1.2, 2])
+                            with cep1: e_pref = st.selectbox("Cód.", CODIGOS_PAISES, index=idx_defecto, key=f"e_pref_cal_{idx}")
+                            with cep2: e_tel = st.text_input("Teléfono", value=e_tel_actual, key=f"e_tel_cal_{idx}")
+                            
+                            # SE AGREGÓ CAMPO EMAIL
+                            e_email = st.text_input("Correo Electrónico", value=row.get('Email',''), key=f"e_mail_cal_{idx}")
+                            
                         with ce2:
                             e_prof = st.text_input("Profesión / Cargo", value=row.get('Profesion',''), key=f"e_prof_cal_{idx}")
                             e_pais = st.text_input("País / Ciudad", value=row.get('Pais',''), key=f"e_pais_cal_{idx}")
                             e_cot = st.text_input("N° Cotiz.", value=row.get('N° Cotiz.',''), key=f"e_cot_cal_{idx}")
+                            
                         if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_cal_{idx}"):
+                            if e_pref == "🌎 Otro" or e_tel.strip() == "" or e_tel.startswith("+"):
+                                tel_final_edit = e_tel
+                            else:
+                                cod_edit = e_pref.split("(")[1].replace(")", "")
+                                tel_final_edit = f"{cod_edit} {e_tel}"
+                                
                             df_act = get_data()
                             df_act.at[idx, 'Cliente'] = e_cli
                             df_act.at[idx, 'Empresa'] = e_emp
-                            df_act.at[idx, 'Telefono'] = e_tel
+                            df_act.at[idx, 'Telefono'] = tel_final_edit
+                            df_act.at[idx, 'Email'] = e_email
                             df_act.at[idx, 'Profesion'] = e_prof
                             df_act.at[idx, 'Pais'] = e_pais
                             df_act.at[idx, 'N° Cotiz.'] = e_cot
