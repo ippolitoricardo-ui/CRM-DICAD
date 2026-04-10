@@ -7,6 +7,40 @@ import plotly.express as px
 # --- CONFIGURACION DE PÁGINA Y ESTILOS ---
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
+# --- 1. BASE DE DATOS DE USUARIOS ---
+USUARIOS = {
+    "Gustavo Carballo": "dicad2026",
+    "Ricardo Ippolito": "ventas01",
+    "Santiago Yagüe": "strakon02",
+    "Joaquin Pons": "america03"
+}
+
+# --- 2. GESTIÓN DE SESIÓN (LOGIN) ---
+if 'autenticado' not in st.session_state:
+    st.session_state.autenticado = False
+    st.session_state.usuario_actual = None
+
+def login():
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.title("🔐 Acceso CRM DICAD")
+        with st.form("login_form"):
+            user = st.selectbox("Seleccione su nombre", list(USUARIOS.keys()))
+            password = st.text_input("Contraseña", type="password")
+            submit = st.form_submit_button("Ingresar", use_container_width=True)
+            
+            if submit:
+                if USUARIOS[user] == password:
+                    st.session_state.autenticado = True
+                    st.session_state.usuario_actual = user
+                    st.rerun()
+                else:
+                    st.error("Contraseña incorrecta")
+
+if not st.session_state.autenticado:
+    login()
+    st.stop()
+
 # --- SIDEBAR ---
 with st.sidebar:
     # 1. FORZAR EL FONDO AZUL DICAD Y LETRAS BLANCAS
@@ -114,10 +148,14 @@ if section == "Negociaciones":
             df['Estado_Nego'] = df['Estado_Nego'].replace(['', '0', 0, None], 'En Proceso').fillna('En Proceso')
             df['Asesor'] = df['Asesor'].replace(['', '0', 0, None], 'Sin Asignar').fillna('Sin Asignar')
 
-            # 1. EL FILTRO PARA EL DUEÑO (Administrador)
+# 1. EL FILTRO INTELIGENTE
             st.markdown("### 👔 Vista de Administrador")
-            lista_asesores = ["Todos los Asesores"] + sorted(list(df['Asesor'].unique()))
-            asesor_seleccionado = st.selectbox("Filtrar métricas por Asesor:", lista_asesores)
+            lista_asesores = ["Todos los Asesores"] + list(USUARIOS.keys())
+            try:
+                index_inicio = lista_asesores.index(st.session_state.usuario_actual)
+            except:
+                index_inicio = 0
+            asesor_seleccionado = st.selectbox("Filtrar métricas por Asesor:", lista_asesores, index=index_inicio)
 
             # Filtramos la tabla según lo que elijas en el menú
             if asesor_seleccionado == "Todos los Asesores":
@@ -289,7 +327,12 @@ if section == "Agregar Cliente":
             cargo = st.text_input("Cargo")
             cotizacion = st.text_input("N° Cotiz.")
             notas = st.text_area("Notas")
-            asesor = st.selectbox("Asesor comercial", ["Ricardo Ippolito", "Gustavo Carballo", "Santiago Yagüe", "Joaquin Pons"])
+            vendedores = list(USUARIOS.keys())
+            try:
+                index_vendedor = vendedores.index(st.session_state.usuario_actual)
+            except:
+                index_vendedor = 0
+            asesor = st.selectbox("Asesor comercial", vendedores, index=index_vendedor)
             
         st.markdown("---")
         link_pdf = st.text_input("🔗 Link al Presupuesto (Google Drive / Dropbox)", placeholder="Pegue aquí el enlace compartido...")    
