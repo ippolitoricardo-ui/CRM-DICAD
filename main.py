@@ -12,7 +12,6 @@ st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 USUARIOS = st.secrets["passwords"]
 ADMINISTRADOR = "Ricardo Ippolito"
 
-# Lista completa de 35 países de América + España, Portugal, Mozambique + Otro
 CODIGOS_PAISES = [
     "🇦🇬 Antigua y Barbuda (+1)", "🇦🇷 Argentina (+54)", "🇧🇸 Bahamas (+1)", "🇧🇧 Barbados (+1)",
     "🇧🇿 Belice (+501)", "🇧🇴 Bolivia (+591)", "🇧🇷 Brasil (+55)", "🇨🇦 Canadá (+1)",
@@ -27,18 +26,40 @@ CODIGOS_PAISES = [
 ]
 
 def extraer_pais_codigo(seleccion):
-    if seleccion == "🌎 Otro":
-        return "Otro", ""
+    if seleccion == "🌎 Otro": return "Otro", ""
     try:
-        # Divide la bandera del texto
         partes = seleccion.split(" ", 1)
-        # Divide el nombre del país del código entre paréntesis
         sub_partes = partes[1].split(" (")
         pais = sub_partes[0].strip()
         codigo = sub_partes[1].replace(")", "").strip()
         return pais, codigo
     except:
         return "Desconocido", ""
+
+# --- MOTOR DE LECTURA DE DINERO INTELIGENTE ---
+def limpiar_monto_para_suma(val_str):
+    texto = str(val_str).upper()
+    if "USD" not in texto and "ARS" not in texto:
+        return 0.0
+    clean_str = ''.join(c for c in texto if c.isdigit() or c in '.,')
+    if not clean_str: return 0.0
+    
+    if ',' in clean_str and '.' in clean_str:
+        last_sep = ',' if clean_str.rfind(',') > clean_str.rfind('.') else '.'
+        clean_str = clean_str.replace(',' if last_sep == '.' else '.', '')
+        clean_str = clean_str.replace(last_sep, '.')
+    elif ',' in clean_str:
+        if len(clean_str.split(',')[-1]) != 3: 
+            clean_str = clean_str.replace(',', '.')
+        else:
+            clean_str = clean_str.replace(',', '')
+    elif '.' in clean_str:
+        if len(clean_str.split('.')[-1]) == 3:
+            clean_str = clean_str.replace('.', '')
+    try:
+        return float(clean_str)
+    except:
+        return 0.0
 
 # --- 2. GESTIÓN DE SESIÓN (LOGIN) ---
 if 'autenticado' not in st.session_state:
@@ -313,7 +334,22 @@ elif section == "Negociaciones":
     if df.empty:
         st.info("No hay negociaciones registradas todavía.")
     else:
-        st.markdown("### 👔 Vista de Administrador")
+        # --- TOTALES GLOBALES EXCLUSIVOS PARA ADMINISTRADOR ---
+        if st.session_state.usuario_actual == ADMINISTRADOR:
+            st.markdown("### 🏢 TOTAL GLOBAL EMPRESA (Todos los Asesores)")
+            df_global = df[(df['Estado_Nego'] != 'Potencial') & (df['Estado_Nego'] != '')]
+            
+            tot_g_usd = sum(limpiar_monto_para_suma(x) for x in df_global['Monto USD / $'] if "USD" in str(x).upper())
+            tot_g_ars = sum(limpiar_monto_para_suma(x) for x in df_global['Monto USD / $'] if "ARS" in str(x).upper())
+            
+            cg1, cg2, cg3 = st.columns(3)
+            cg1.metric("💰 USD Total Global", f"USD {tot_g_usd:,.0f}")
+            cg2.metric("💵 ARS Total Global", f"ARS {tot_g_ars:,.0f}")
+            cg3.metric("🤝 Total Negociaciones Históricas", len(df_global))
+            st.markdown("---")
+
+        # --- VISTA FILTRADA ---
+        st.markdown("### 👔 Vista por Asesor")
         asesor_seleccionado = st.selectbox("Filtrar métricas por Asesor:", lista_asesores, index=index_inicio)
 
         if asesor_seleccionado == "Todos los Asesores":
@@ -323,39 +359,20 @@ elif section == "Negociaciones":
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        total_usd = 0
-        total_ars = 0
-
-        for val in df_tablero['Monto USD / $'].dropna():
-            val_str = str(val).upper()
-            if "USD" in val_str:
-                numero = val_str.replace("USD", "").replace(",", "").strip()
-                try: total_usd += float(numero)
-                except: pass
-            elif "ARS" in val_str:
-                numero = val_str.replace("ARS", "").replace(",", "").strip()
-                try: total_ars += float(numero)
-                except: pass
+        total_usd = sum(limpiar_monto_para_suma(x) for x in df_tablero['Monto USD / $'] if "USD" in str(x).upper())
+        total_ars = sum(limpiar_monto_para_suma(x) for x in df_tablero['Monto USD / $'] if "ARS" in str(x).upper())
 
         kpi1, kpi2, kpi3 = st.columns(3)
-        kpi1.metric(label="💰 Total Cotizado (USD)", value=f"USD {total_usd:,.0f}")
-        kpi2.metric(label="💵 Total Cotizado (ARS)", value=f"ARS {total_ars:,.0f}")
-        kpi3.metric(label="🤝 Negociaciones", value=f"{len(df_tablero)}")
+        kpi1.metric(label="💰 Cotizado (USD)", value=f"USD {total_usd:,.0f}")
+        kpi2.metric(label="💵 Cotizado (ARS)", value=f"ARS {total_ars:,.0f}")
+        kpi3.metric(label="🤝 Negociaciones Filtradas", value=f"{len(df_tablero)}")
 
         st.markdown("---") 
         col_graf1, col_graf2 = st.columns(2)
         
         with col_graf1:
-            def extraer_usd(valor):
-                texto = str(valor).upper()
-                if "USD" in texto:
-                    numero = texto.replace("USD", "").replace(",", "").strip()
-                    try: return float(numero)
-                    except: return 0.0
-                return 0.0
-            
             df_grafico = df_tablero.copy()
-            df_grafico['Plata_USD'] = df_grafico['Monto USD / $'].apply(extraer_usd)
+            df_grafico['Plata_USD'] = df_grafico['Monto USD / $'].apply(lambda x: limpiar_monto_para_suma(x) if "USD" in str(x).upper() else 0.0)
             
             if not df_grafico.empty and df_grafico['Plata_USD'].sum() > 0:
                 datos_torta = df_grafico.groupby('Estado_Nego')['Plata_USD'].sum().reset_index()
@@ -412,16 +429,16 @@ elif section == "Negociaciones":
                     <div class="crm-neg-card" style="background:white;padding:1.3em;border-radius:12px;
                     margin-bottom:0.6em; box-shadow:0 1px 8px #d0d6e1; border-left: 6px solid {borde_color}; color:black !important;">
                         {badge}
-                        <b>Cliente:</b> {row.get('Cliente', '')} <br>
+                        <b>Cliente:</b> {row.get('Cliente', '')} | <b>N° Cotiz:</b> <span style="color:#6c757d">{row.get('N° Cotiz.', 'N/A')}</span><br>
                         <b>Empresa:</b> {row.get('Empresa', '')} <br>
                         <b>Monto USD / $:</b> <span style="color:#2261b6; font-weight:bold;">{row.get('Monto USD / $', '')}</span>
                     </div>
                     """, unsafe_allow_html=True
                 )
 
-            with st.expander(f"Ver detalles de {row.get('Cliente', '')}", expanded=False):
+            with st.expander(f"Ver Ficha Completa de {row.get('Cliente', '')}", expanded=False):
                 if puede_editar:
-                    with st.expander("⚙️ Editar Ficha del Cliente", expanded=False):
+                    with st.expander("⚙️ Editar Datos del Contacto", expanded=False):
                         ce1, ce2 = st.columns(2)
                         with ce1:
                             e_cli = st.text_input("Nombre", value=row.get('Cliente',''), key=f"e_cli_neg_{idx}")
@@ -442,7 +459,7 @@ elif section == "Negociaciones":
                             e_tel = st.text_input("Teléfono (Sin código de país)", value=row.get('Telefono',''), key=f"e_tel_neg_{idx}")
                             e_email = st.text_input("Correo Electrónico", value=row.get('Email',''), key=f"e_mail_neg_{idx}")
                             
-                        if st.button("💾 Guardar Cambios de Ficha", key=f"btn_e_neg_{idx}"):
+                        if st.button("💾 Guardar Cambios de Contacto", key=f"btn_e_neg_{idx}"):
                             p_fin, c_fin = extraer_pais_codigo(e_pais_sel)
                             
                             if e_tel.strip() == "" or e_tel.startswith("+") or c_fin == "":
@@ -482,8 +499,68 @@ elif section == "Negociaciones":
                 if 'Link_PDF' in row and str(row.get('Link_PDF', '')).strip() != "":
                     st.link_button("📄 Abrir Presupuesto PDF", row['Link_PDF'], use_container_width=True)
 
+                # --- HISTORIAL Y MÚLTIPLES COTIZACIONES ---
                 st.markdown("---")
-                st.markdown("**📝 Gestión de Seguimiento (Historial):**")
+                st.markdown("### 🗂️ Historial y Múltiples Cotizaciones")
+                
+                # Suma matemática de todo lo que tiene este cliente
+                cliente_email = str(row.get('Email', '')).strip().lower()
+                cliente_tel = str(row.get('Telefono', '')).replace(" ", "").replace("+", "")
+                
+                if cliente_email:
+                    df_cliente = df_tablero[df_tablero['Email'].str.lower().str.strip() == cliente_email]
+                else:
+                    df_cliente = df_tablero[df_tablero['Telefono'].str.replace(" ", "").str.replace("+", "") == cliente_tel]
+                    
+                total_cliente_usd = sum(limpiar_monto_para_suma(m) for m in df_cliente['Monto USD / $'] if "USD" in str(m).upper())
+                st.info(f"**💰 Monto Total Cotizado a {row.get('Cliente', '')}:** USD {total_cliente_usd:,.0f} (En {len(df_cliente)} cotizaciones activas/cerradas)")
+                
+                if puede_editar:
+                    with st.expander("➕ Agregar Nueva Cotización a este Cliente", expanded=False):
+                        st.markdown("Genera un nuevo presupuesto para este cliente sin tener que cargar todos sus datos de nuevo.")
+                        col_nc1, col_nc2 = st.columns(2)
+                        with col_nc1:
+                            nc_monto = st.text_input("Nuevo Monto Numérico", key=f"nc_m_{idx}")
+                            nc_moneda = st.selectbox("Moneda", ["USD", "ARS"], key=f"nc_mon_{idx}")
+                        with col_nc2:
+                            nc_cotiz = st.text_input("N° Cotiz (Vacío = Auto)", key=f"nc_cot_{idx}")
+                            nc_pdf = st.text_input("Link al PDF", key=f"nc_pdf_{idx}")
+                            
+                        if st.button("✅ Generar Nueva Cotización", key=f"btn_nc_{idx}"):
+                            df_actual = get_data()
+                            fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+                            cotiz_final = nc_cotiz.strip() if nc_cotiz.strip() else generar_numero_cotizacion(df_actual)
+                            monto_final = f"{nc_moneda} {nc_monto}" if nc_monto.strip() else ""
+                            
+                            nuevo_dato = pd.DataFrame([{
+                                "Creado": fecha_hoy,
+                                "Cliente": row.get('Cliente', ''),
+                                "Profesion": row.get('Profesion', ''),
+                                "Direccion": row.get('Direccion', ''), 
+                                "Pais": row.get('Pais', ''), 
+                                "Ciudad": row.get('Ciudad', ''), 
+                                "Estado /Prov.": row.get('Estado /Prov.', ''),
+                                "Empresa": row.get('Empresa', ''), 
+                                "Cargo": row.get('Cargo', ''), 
+                                "Telefono": row.get('Telefono', ''), 
+                                "Email": row.get('Email', ''),
+                                "N° Cotiz.": cotiz_final,
+                                "Monto USD / $": monto_final,
+                                "Notas": f"[{fecha_hoy}] 📝 Se agregó una cotización adicional para el cliente.",
+                                "Proxima llamada": row.get('Proxima llamada', ''),
+                                "Asesor": row.get('Asesor', ''),
+                                "Estado_Nego": "En Proceso",
+                                "Link_PDF": nc_pdf.strip()
+                            }])
+                            
+                            df_actualizado = pd.concat([df_actual, nuevo_dato], ignore_index=True)
+                            conn.update(worksheet=worksheet_name, data=df_actualizado, spreadsheet=GSHEET_URL)
+                            st.cache_data.clear()
+                            st.success("Nueva cotización agregada con éxito.")
+                            st.rerun()
+
+                st.markdown("---")
+                st.markdown("**📝 Gestión de Llamadas:**")
                 st.info(row.get('Notas', 'Sin notas previas.'))
                 
                 if puede_editar:
@@ -505,7 +582,7 @@ elif section == "Negociaciones":
                             st.rerun()
                     
                     st.markdown("---")
-                    st.markdown("**✏️ Actualizar Datos del Presupuesto:**")
+                    st.markdown("**✏️ Modificar Cotización Actual:**")
                     col_e1, col_e2, col_e3 = st.columns([1.5, 2, 1])
                     with col_e1:
                         edit_monto = st.text_input("Monto Cotizado", value=str(row.get('Monto USD / $', '')), key=f"edit_m_{idx}")
@@ -523,7 +600,7 @@ elif section == "Negociaciones":
                             st.rerun()
 
                     st.markdown("---")
-                    st.markdown("**💰 Resolución de la Negociación:**")
+                    st.markdown("**💰 Resolución de esta Negociación:**")
                     
                     if estado_actual in ['Ganada', 'Perdida']:
                         st.info(f"Esta negociación ya se encuentra cerrada como **{estado_actual.upper()}**.")
@@ -587,7 +664,6 @@ elif section == "Agregar Cliente":
         cliente = st.text_input("Nombre del contacto *", key=f"cli_{fk}")
         empresa = st.text_input("Empresa", key=f"emp_{fk}")
         
-        # --- PAÍS INTELIGENTE NUEVO CONTACTO ---
         pais_seleccionado = st.selectbox("País (Seleccione para autocompletar código)", CODIGOS_PAISES, key=f"pais_sel_{fk}")
         ciudad = st.text_input("Ciudad", key=f"ciu_{fk}")
         
@@ -629,58 +705,74 @@ elif section == "Agregar Cliente":
         if cliente.strip() == "":
             st.warning("⚠️ El Nombre es obligatorio para guardar.")
         else:
-            with st.spinner("Guardando..."):
+            with st.spinner("Guardando y verificando duplicados..."):
                 df_actual_temp = conn.read(worksheet=worksheet_name, usecols=list(range(len(COLUMNS))), names=COLUMNS, ttl=5)
                 
-                monto_final = f"{moneda} {monto_valor}" if monto_valor.strip() != "" else ""
-                fecha_hoy = datetime.now().strftime("%d/%m/%Y")
-                estado_inicial = "Potencial" if "Potencial" in tipo_contacto else "En Proceso"
-                
-                cotizacion_final = cotizacion.strip()
-                if estado_inicial == "En Proceso" and cotizacion_final == "":
-                    cotizacion_final = generar_numero_cotizacion(df_actual_temp)
-                
+                # --- ESCUDO ANTI-DUPLICADOS ---
                 pais_final, cod_final = extraer_pais_codigo(pais_seleccionado)
-                
                 if telefono.strip() == "" or telefono.startswith("+") or cod_final == "":
                     tel_final = telefono
                 else:
                     tel_final = f"{cod_final} {telefono}"
 
-                texto_nota = f"[{fecha_hoy}] 📝 {nota_inicial}" if nota_inicial.strip() else ""
-
-                nuevo_dato = pd.DataFrame([{
-                    "Creado": fecha_hoy,
-                    "Cliente": cliente,
-                    "Profesion": profesion,
-                    "Direccion": "", 
-                    "Pais": pais_final, 
-                    "Ciudad": ciudad, 
-                    "Estado /Prov.": "",
-                    "Empresa": empresa, 
-                    "Cargo": cargo, 
-                    "Telefono": tel_final, 
-                    "Email": email,
-                    "N° Cotiz.": cotizacion_final,
-                    "Monto USD / $": monto_final,
-                    "Notas": texto_nota,
-                    "Proxima llamada": proxima_llamada.strftime("%d/%m/%Y"),
-                    "Asesor": asesor,
-                    "Estado_Nego": estado_inicial,
-                    "Link_PDF": link_pdf
-                }])
+                email_limpio = email.strip().lower()
+                tel_limpio = tel_final.replace(" ", "").replace("+", "").replace("-", "")
                 
-                try:
-                    df_actualizado = pd.concat([df_actual_temp, nuevo_dato], ignore_index=True)
-                    conn.update(worksheet=worksheet_name, data=df_actualizado)
-                    st.cache_data.clear() 
+                es_duplicado = False
+                for i, r in df_actual_temp.iterrows():
+                    r_email = str(r.get('Email', '')).strip().lower()
+                    r_tel = str(r.get('Telefono', '')).replace(" ", "").replace("+", "").replace("-", "")
                     
-                    st.session_state.form_key += 1
+                    if email_limpio != "" and email_limpio == r_email:
+                        es_duplicado = True
+                        break
+                    if tel_limpio != "" and tel_limpio == r_tel:
+                        es_duplicado = True
+                        break
+
+                if es_duplicado:
+                    st.error("🚨 ¡ESTE CLIENTE YA ESTÁ CARGADO! El sistema detectó que este correo o teléfono ya existe en la base de datos. Si quieres agregarle una nueva cotización, búscalo en la pestaña 'Negociaciones' y usa el botón '➕ Nueva Cotización'.")
+                else:
+                    monto_final = f"{moneda} {monto_valor}" if monto_valor.strip() != "" else ""
+                    fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+                    estado_inicial = "Potencial" if "Potencial" in tipo_contacto else "En Proceso"
                     
-                    st.success(f"✅ ¡{cliente} guardado exitosamente!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error al guardar: {e}")
+                    cotizacion_final = cotizacion.strip()
+                    if estado_inicial == "En Proceso" and cotizacion_final == "":
+                        cotizacion_final = generar_numero_cotizacion(df_actual_temp)
+
+                    texto_nota = f"[{fecha_hoy}] 📝 {nota_inicial}" if nota_inicial.strip() else ""
+
+                    nuevo_dato = pd.DataFrame([{
+                        "Creado": fecha_hoy,
+                        "Cliente": cliente,
+                        "Profesion": profesion,
+                        "Direccion": "", 
+                        "Pais": pais_final, 
+                        "Ciudad": ciudad, 
+                        "Estado /Prov.": "",
+                        "Empresa": empresa, 
+                        "Cargo": cargo, 
+                        "Telefono": tel_final, 
+                        "Email": email,
+                        "N° Cotiz.": cotizacion_final,
+                        "Monto USD / $": monto_final,
+                        "Notas": texto_nota,
+                        "Proxima llamada": proxima_llamada.strftime("%d/%m/%Y"),
+                        "Asesor": asesor,
+                        "Estado_Nego": estado_inicial,
+                        "Link_PDF": link_pdf
+                    }])
+                    
+                    try:
+                        df_actualizado = pd.concat([df_actual_temp, nuevo_dato], ignore_index=True)
+                        conn.update(worksheet=worksheet_name, data=df_actualizado)
+                        st.cache_data.clear() 
+                        st.session_state.form_key += 1
+                        st.success(f"✅ ¡{cliente} guardado exitosamente!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al guardar: {e}")
 
 # --- PESTAÑA 4: CALENDARIO ---
 elif section == "Calendario":
