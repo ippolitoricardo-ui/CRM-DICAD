@@ -68,7 +68,8 @@ COLUMNS = [
     "Proxima llamada",
     "Creado",
     "Asesor",
-    "Estado_Nego"
+    "Estado_Nego",
+    "Link_PDF"
 ]
 
 VENDEDORES = ["Alice", "Bob", "Carlos", "Diana"]  # Puedes modificarlo según tus asesores reales
@@ -264,6 +265,9 @@ if section == "Agregar Cliente":
             notas = st.text_area("Notas")
             asesor = st.selectbox("Asesor comercial", ["Ricardo Ippolito", "Gustavo Carballo", "Santiago Yagüe", "Joaquin Pons"])
             
+        st.markdown("---")
+        link_pdf = st.text_input("🔗 Link al Presupuesto (Google Drive / Dropbox)", placeholder="Pegue aquí el enlace compartido...")    
+            
         st.markdown("<br>", unsafe_allow_html=True)
         submit_btn = st.form_submit_button("Agregar Negociación", type="primary")
         
@@ -297,7 +301,8 @@ if section == "Agregar Cliente":
                         "Notas": notas,
                         "Proxima llamada": proxima_llamada.strftime("%d/%m/%Y"),
                         "Asesor": asesor,
-                        "Estado_Nego": "En Proceso"
+                        "Estado_Nego": "En Proceso",
+                        "Link_PDF": link_pdf
                     }])
                     
                     try:
