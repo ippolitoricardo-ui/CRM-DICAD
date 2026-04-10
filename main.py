@@ -94,6 +94,11 @@ def save_data(row):
     df = get_data()
     new_df = pd.concat([df, pd.DataFrame([row], columns=COLUMNS)], ignore_index=True)
     conn.update(worksheet=worksheet_name, data=new_df, spreadsheet=GSHEET_URL)
+    
+def update_estado(indice, nuevo_estado):
+    df_actual = get_data()
+    df_actual.at[indice, 'Estado_Nego'] = nuevo_estado
+    conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)    
 
 # --- SECCION NEGOCIACIONES ---
 if section == "Negociaciones":
@@ -231,6 +236,27 @@ if section == "Negociaciones":
                         st.markdown(f"**Asesor comercial:** {row.get('Asesor comercial', '')}")
                         creado = row.get('Creado', '')
                         st.markdown(f"**Creado:** {creado if creado else 'N/A'}")
+                    # --- 1. BOTÓN PARA VER EL PRESUPUESTO ---
+                    if 'Link_PDF' in row and str(row.get('Link_PDF', '')).strip() != "":
+                        st.markdown("---")
+                        st.link_button("📄 Abrir Presupuesto PDF", row['Link_PDF'], use_container_width=True)
+                    
+                    # --- 2. BOTONES DE RESOLUCIÓN (GANADA/PERDIDA) ---
+                    st.markdown("---")
+                    st.markdown("**💰 Resolución de la Negociación:**")
+                    
+                    col_g, col_p = st.columns(2)
+                    with col_g:
+                        if st.button("✅ Marcar como GANADA", key=f"ganar_{idx}", use_container_width=True):
+                            update_estado(idx, "Ganada")
+                            st.cache_data.clear()
+                            st.rerun()
+                    with col_p:
+                        if st.button("❌ Marcar como PERDIDA", key=f"perder_{idx}", use_container_width=True):
+                            update_estado(idx, "Perdida")
+                            st.cache_data.clear()
+                            st.rerun()    
+                        
 
 # --- PESTAÑA: AGREGAR CLIENTE ---
 if section == "Agregar Cliente":
