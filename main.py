@@ -8,12 +8,7 @@ import plotly.express as px
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
 # --- 1. BASE DE DATOS DE USUARIOS ---
-USUARIOS = {
-    "Gustavo Carballo": "dicad2026",
-    "Ricardo Ippolito": "ventas01",
-    "Santiago Yagüe": "strakon02",
-    "Joaquin Pons": "america03"
-}
+USUARIOS = st.secrets["passwords"]
 
 # --- 2. GESTIÓN DE SESIÓN (LOGIN) ---
 if 'autenticado' not in st.session_state:
