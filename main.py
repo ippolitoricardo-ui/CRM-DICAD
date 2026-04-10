@@ -54,7 +54,7 @@ with st.sidebar:
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True) 
     
-    # EL MENÚ CON LA NUEVA PESTAÑA "POTENCIALES"
+    # EL MENÚ
     section = option_menu(
         menu_title=None, 
         options=["Potenciales", "Negociaciones", "Agregar Cliente", "Calendario"],
@@ -106,18 +106,36 @@ def update_estado(indice, nuevo_estado):
     df_actual.at[indice, 'Estado_Nego'] = nuevo_estado
     conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)    
 
-def agregar_nota_historial(indice, nota_existente, nueva_nota):
+# NUEVA FUNCIÓN MEJORADA: Guarda la nota y reprograma la llamada al mismo tiempo
+def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_obj, fecha_anterior_str):
     df_actual = get_data()
     fecha_hoy = datetime.now().strftime("%d/%m/%Y")
-    texto_agregado = f"[{fecha_hoy}] - {nueva_nota}"
+    nueva_fecha_str = nueva_fecha_obj.strftime("%d/%m/%Y")
+
+    texto_agregado = ""
     
-    nota_previa = str(nota_existente)
-    if nota_previa.strip() == "" or nota_previa.lower() == "nan":
-        nota_final = texto_agregado
-    else:
-        nota_final = f"{nota_previa}\n{texto_agregado}"
+    # Si escribió algo, lo agregamos
+    if nueva_nota.strip():
+        texto_agregado += f"[{fecha_hoy}] 📝 {nueva_nota}"
         
-    df_actual.at[indice, 'Notas'] = nota_final
+    # Si cambió la fecha del calendario, lo dejamos asentado en el historial
+    if nueva_fecha_str != str(fecha_anterior_str):
+        if texto_agregado:
+            texto_agregado += f" | 📅 Reprogramado para: {nueva_fecha_str}"
+        else:
+            texto_agregado = f"[{fecha_hoy}] 📅 Llamada reprogramada para: {nueva_fecha_str}"
+
+    # Guardamos en la columna Notas
+    if texto_agregado:
+        nota_previa = str(nota_existente)
+        if nota_previa.strip() == "" or nota_previa.lower() == "nan":
+            nota_final = texto_agregado
+        else:
+            nota_final = f"{nota_previa}\n{texto_agregado}"
+        df_actual.at[indice, 'Notas'] = nota_final
+    
+    # Actualizamos la columna real de "Proxima llamada" para que limpie el calendario viejo
+    df_actual.at[indice, 'Proxima llamada'] = nueva_fecha_str
     conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
 
 df = get_data()
@@ -138,7 +156,6 @@ if section == "Potenciales":
     else:
         asesor_seleccionado = st.selectbox("Filtrar por Asesor:", lista_asesores, index=index_inicio)
         
-        # Filtramos solo los que son Potenciales
         if asesor_seleccionado == "Todos los Asesores":
             df_potenciales = df[df['Estado_Nego'] == 'Potencial']
         else:
@@ -160,23 +177,30 @@ if section == "Potenciales":
                 )
             
             with st.expander(f"Ver / Editar a {row.get('Cliente', '')}", expanded=False):
-                # Historial de Notas
-                st.markdown("**📝 Historial de Seguimiento:**")
+                # GESTIÓN MEJORADA (Fecha + Nota)
+                st.markdown("**📝 Gestión de Seguimiento (Historial):**")
                 st.info(row.get('Notas', 'Sin notas previas.'))
                 
-                col_n1, col_n2 = st.columns([3, 1])
+                # Buscamos la fecha que tiene actualmente para ponerla por defecto
+                try:
+                    fecha_actual_obj = datetime.strptime(str(row.get('Proxima llamada', '')).strip(), "%d/%m/%Y").date()
+                except:
+                    fecha_actual_obj = date.today()
+                
+                col_n1, col_n2, col_n3 = st.columns([1.2, 2.5, 1])
                 with col_n1:
-                    nueva_nota = st.text_input("Agregar nueva nota:", key=f"nota_pot_{idx}", placeholder="Escriba lo que se habló hoy...")
+                    nueva_fecha = st.date_input("📅 Reprogramar llamada", value=fecha_actual_obj, key=f"fecha_pot_{idx}")
                 with col_n2:
+                    nueva_nota = st.text_input("Agregar nota de hoy:", key=f"nota_pot_{idx}", placeholder="Ej: Me pidió que lo llame el martes...")
+                with col_n3:
                     st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("Guardar Nota", key=f"btn_nota_pot_{idx}"):
-                        if nueva_nota.strip():
-                            agregar_nota_historial(idx, row.get('Notas', ''), nueva_nota)
-                            st.cache_data.clear()
-                            st.rerun()
+                    if st.button("💾 Guardar Gestión", key=f"btn_nota_pot_{idx}", use_container_width=True):
+                        guardar_gestion(idx, row.get('Notas', ''), nueva_nota, nueva_fecha, row.get('Proxima llamada', ''))
+                        st.cache_data.clear()
+                        st.rerun()
                 
                 st.markdown("---")
-                # NUEVO: Botón de Promoción con Edición de Presupuesto
+                # Botón de Promoción con Edición de Presupuesto
                 st.markdown("**🚀 Promover a Negociación Activa:**")
                 st.caption("Si ya le armaste un presupuesto, agregá los datos aquí antes de promoverlo.")
                 
@@ -307,39 +331,45 @@ elif section == "Negociaciones":
                     st.markdown(f"**Asesor comercial:** {row.get('Asesor', '')}")
                     st.markdown(f"**Estado Actual:** {row.get('Estado_Nego', '')}")
                 
-                # --- SISTEMA DE NOTAS HISTÓRICAS ---
+                # --- GESTIÓN MEJORADA (Fecha + Nota) ---
                 st.markdown("---")
-                st.markdown("**📝 Historial de Seguimiento:**")
+                st.markdown("**📝 Gestión de Seguimiento (Historial):**")
                 st.info(row.get('Notas', 'Sin notas previas.'))
                 
-                col_n1, col_n2 = st.columns([3, 1])
-                with col_n1:
-                    nueva_nota = st.text_input("Agregar nueva nota:", key=f"nota_neg_{idx}", placeholder="Escriba lo que se habló hoy...")
-                with col_n2:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("Guardar Nota", key=f"btn_nota_neg_{idx}"):
-                        if nueva_nota.strip():
-                            agregar_nota_historial(idx, row.get('Notas', ''), nueva_nota)
-                            st.cache_data.clear()
-                            st.rerun()
+                try:
+                    fecha_actual_obj = datetime.strptime(str(row.get('Proxima llamada', '')).strip(), "%d/%m/%Y").date()
+                except:
+                    fecha_actual_obj = date.today()
                 
-                # NUEVO: Edición rápida de Monto y PDF
+                col_n1, col_n2, col_n3 = st.columns([1.2, 2.5, 1])
+                with col_n1:
+                    nueva_fecha = st.date_input("📅 Reprogramar llamada", value=fecha_actual_obj, key=f"fecha_neg_{idx}")
+                with col_n2:
+                    nueva_nota = st.text_input("Agregar nota de hoy:", key=f"nota_neg_{idx}", placeholder="Ej: Quedó en ver el PDF...")
+                with col_n3:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("💾 Guardar Gestión", key=f"btn_nota_neg_{idx}", use_container_width=True):
+                        guardar_gestion(idx, row.get('Notas', ''), nueva_nota, nueva_fecha, row.get('Proxima llamada', ''))
+                        st.cache_data.clear()
+                        st.rerun()
+                
+                # Edición rápida de Monto y PDF
                 st.markdown("---")
                 st.markdown("**✏️ Actualizar Datos del Presupuesto:**")
-                col_e1, col_e2 = st.columns(2)
+                col_e1, col_e2, col_e3 = st.columns([1.5, 2, 1])
                 with col_e1:
                     edit_monto = st.text_input("Monto Cotizado", value=str(row.get('Monto USD / $', '')), key=f"edit_m_{idx}")
                 with col_e2:
                     edit_link = st.text_input("Link al PDF", value=str(row.get('Link_PDF', '')), key=f"edit_l_{idx}")
-                    
-                if st.button("💾 Guardar Cambios de Presupuesto", key=f"save_edit_{idx}"):
-                    df_actual = get_data()
-                    df_actual.at[idx, 'Monto USD / $'] = edit_monto
-                    df_actual.at[idx, 'Link_PDF'] = edit_link
-                    conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
-                    st.cache_data.clear()
-                    st.success("¡Datos actualizados!")
-                    st.rerun()
+                with col_e3:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("💾 Actualizar", key=f"save_edit_{idx}"):
+                        df_actual = get_data()
+                        df_actual.at[idx, 'Monto USD / $'] = edit_monto
+                        df_actual.at[idx, 'Link_PDF'] = edit_link
+                        conn.update(worksheet=worksheet_name, data=df_actual, spreadsheet=GSHEET_URL)
+                        st.cache_data.clear()
+                        st.rerun()
 
                 if 'Link_PDF' in row and str(row.get('Link_PDF', '')).strip() != "":
                     st.markdown("---")
@@ -413,11 +443,8 @@ elif section == "Agregar Cliente":
                     monto_final = f"{moneda} {monto_valor}" if monto_valor.strip() != "" else ""
                     fecha_hoy = datetime.now().strftime("%d/%m/%Y")
                     
-                    # Definimos si va a Potenciales o a Negociaciones
                     estado_inicial = "Potencial" if "Potencial" in tipo_contacto else "En Proceso"
-                    
-                    # Formateamos la nota inicial para que encaje en el historial
-                    texto_nota = f"[{fecha_hoy}] - {nota_inicial}" if nota_inicial.strip() else ""
+                    texto_nota = f"[{fecha_hoy}] 📝 {nota_inicial}" if nota_inicial.strip() else ""
 
                     nuevo_dato = pd.DataFrame([{
                         "Creado": fecha_hoy,
