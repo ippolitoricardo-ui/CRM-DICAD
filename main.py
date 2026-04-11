@@ -25,8 +25,7 @@ CODIGOS_PAISES = [
 
 def extraer_pais_codigo(seleccion):
     if seleccion == "🌎 Otro": return "Otro", ""
-    try:
-        return seleccion.split(" ", 1)[1].split(" (")[0].strip(), seleccion.split(" ", 1)[1].split(" (")[1].replace(")", "").strip()
+    try: return seleccion.split(" ", 1)[1].split(" (")[0].strip(), seleccion.split(" ", 1)[1].split(" (")[1].replace(")", "").strip()
     except: return "Desconocido", ""
 
 def limpiar_monto_para_suma(val_str):
@@ -64,7 +63,8 @@ with st.sidebar:
     st.markdown('<style>[data-testid="stSidebar"] {background-color: #2E3E57 !important;}</style>', unsafe_allow_html=True)
     st.columns([1, 4, 1])[1].image("logo_dicad.png", use_column_width=True) 
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p><br>", unsafe_allow_html=True) 
-    section = option_menu(None, ["Potenciales", "Negociaciones", "Agregar Cliente", "Calendario"], icons=["person-bounding-box", "briefcase", "person-plus", "calendar-date"], default_index=1, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
+    # NUEVO BOTÓN PIPELINE EN EL MENÚ
+    section = option_menu(None, ["Potenciales", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario"], icons=["person-bounding-box", "kanban", "briefcase", "person-plus", "calendar-date"], default_index=2, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
     st.markdown("---")
     st.markdown(f"<div style='text-align: center; color: white; font-size: 14px; margin-bottom: 10px;'>{'👑 Admin' if st.session_state.usuario_actual == ADMINISTRADOR else '💼 Asesor'}: <b>{st.session_state.usuario_actual}</b></div>", unsafe_allow_html=True)
     if st.button("🚪 Cerrar Sesión", use_container_width=True): st.session_state.autenticado = False; st.session_state.usuario_actual = None; st.rerun()
@@ -155,6 +155,59 @@ if section == "Potenciales":
                     if n_l_p: df_a.at[idx, 'Link_PDF'] = n_l_p
                     if not str(df_a.at[idx, 'N° Cotiz.']).strip(): df_a.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_a)
                     guardar_datos(df_a); st.rerun()
+
+# --- NUEVA PESTAÑA: PIPELINE KANBAN ---
+elif section == "Pipeline":
+    c_t, c_b = st.columns([4, 1])
+    with c_t: st.markdown("## 📊 Pipeline de Ventas")
+    with c_b: 
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Actualizar Tablero", use_container_width=True): st.cache_data.clear(); st.rerun()
+        
+    asesor_sel = st.selectbox("Filtrar Tablero por Asesor:", lista_asesores, index=index_inicio)
+    df_pipe = df if asesor_sel == "Todos los Asesores" else df[df['Asesor'] == asesor_sel]
+    
+    estados_kanban = ["Potencial", "En Proceso", "Ganada", "Perdida"]
+    cols_kanban = st.columns(4)
+    
+    for i, estado in enumerate(estados_kanban):
+        with cols_kanban[i]:
+            df_col = df_pipe[df_pipe['Estado_Nego'] == estado]
+            tot_usd = sum(limpiar_monto_para_suma(x) for x in df_col['Monto USD / $'] if 'ARS' not in str(x).upper())
+            
+            color_header = "#6c757d" if estado=="Potencial" else "#ffc107" if estado=="En Proceso" else "#28a745" if estado=="Ganada" else "#dc3545"
+            st.markdown(f"<div style='background-color:{color_header}; color:white; padding:10px; border-radius:5px; text-align:center; font-weight:bold; margin-bottom:15px;'>{estado.upper()} ({len(df_col)})<br>USD {tot_usd:,.0f}</div>", unsafe_allow_html=True)
+            
+            for idx, row in df_col.iterrows():
+                puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
+                
+                st.markdown(f"""
+                <div style="background:white; padding:12px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.15); margin-bottom:5px; border-left:4px solid {color_header}; color:black;">
+                    <b style="font-size:14px;">{row.get('Cliente','')}</b><br>
+                    <span style="font-size:12px; color:#555;">{row.get('Empresa','')}</span><br>
+                    <b style="font-size:13px; color:#2261b6;">{row.get('Monto USD / $','')}</b><br>
+                    <span style="font-size:11px; color:#888;">📅 {row.get('Proxima llamada','')}</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if puede:
+                    opciones_mover = ["Mover a..."] + [e for e in estados_kanban if e != estado]
+                    nuevo_est = st.selectbox("Acción", opciones_mover, key=f"mov_{idx}", label_visibility="collapsed")
+                    if nuevo_est != "Mover a...":
+                        df_actual = get_data()
+                        df_actual.at[idx, 'Estado_Nego'] = nuevo_est
+                        
+                        # Generar cotiz automatica si pasa a En Proceso y no tiene
+                        if nuevo_est == "En Proceso" and not str(df_actual.at[idx, 'N° Cotiz.']).strip():
+                            df_actual.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_actual)
+                            
+                        fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+                        nota_cambio = f"[{fecha_hoy}] 🔄 Movido en Pipeline a: {nuevo_est.upper()}"
+                        nota_previa = str(df_actual.at[idx,'Notas'])
+                        df_actual.at[idx, 'Notas'] = nota_cambio if nota_previa.strip() in ["", "nan"] else f"{nota_previa}\n{nota_cambio}"
+                        
+                        guardar_datos(df_actual)
+                        st.rerun()
 
 elif section == "Negociaciones":
     st.markdown("## :card_index_dividers: Negociaciones Activas")
