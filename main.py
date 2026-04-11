@@ -25,7 +25,8 @@ CODIGOS_PAISES = [
 
 def extraer_pais_codigo(seleccion):
     if seleccion == "🌎 Otro": return "Otro", ""
-    try: return seleccion.split(" ", 1)[1].split(" (")[0].strip(), seleccion.split(" ", 1)[1].split(" (")[1].replace(")", "").strip()
+    try:
+        return seleccion.split(" ", 1)[1].split(" (")[0].strip(), seleccion.split(" ", 1)[1].split(" (")[1].replace(")", "").strip()
     except: return "Desconocido", ""
 
 def limpiar_monto_para_suma(val_str):
@@ -63,7 +64,6 @@ with st.sidebar:
     st.markdown('<style>[data-testid="stSidebar"] {background-color: #2E3E57 !important;}</style>', unsafe_allow_html=True)
     st.columns([1, 4, 1])[1].image("logo_dicad.png", use_column_width=True) 
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p><br>", unsafe_allow_html=True) 
-    # NUEVO BOTÓN PIPELINE EN EL MENÚ
     section = option_menu(None, ["Potenciales", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario"], icons=["person-bounding-box", "kanban", "briefcase", "person-plus", "calendar-date"], default_index=2, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
     st.markdown("---")
     st.markdown(f"<div style='text-align: center; color: white; font-size: 14px; margin-bottom: 10px;'>{'👑 Admin' if st.session_state.usuario_actual == ADMINISTRADOR else '💼 Asesor'}: <b>{st.session_state.usuario_actual}</b></div>", unsafe_allow_html=True)
@@ -107,6 +107,7 @@ df = get_data()
 lista_asesores = ["Todos los Asesores"] + list(USUARIOS.keys())
 index_inicio = lista_asesores.index(st.session_state.usuario_actual) if st.session_state.usuario_actual in lista_asesores else 0
 
+# --- POTENCIALES ---
 if section == "Potenciales":
     st.markdown("## 🎯 Clientes Potenciales")
     asesor_sel = st.selectbox("Filtrar por Asesor:", lista_asesores, index=index_inicio)
@@ -156,7 +157,7 @@ if section == "Potenciales":
                     if not str(df_a.at[idx, 'N° Cotiz.']).strip(): df_a.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_a)
                     guardar_datos(df_a); st.rerun()
 
-# --- NUEVA PESTAÑA: PIPELINE KANBAN ---
+# --- PIPELINE KANBAN ---
 elif section == "Pipeline":
     c_t, c_b = st.columns([4, 1])
     with c_t: st.markdown("## 📊 Pipeline de Ventas")
@@ -196,19 +197,16 @@ elif section == "Pipeline":
                     if nuevo_est != "Mover a...":
                         df_actual = get_data()
                         df_actual.at[idx, 'Estado_Nego'] = nuevo_est
-                        
-                        # Generar cotiz automatica si pasa a En Proceso y no tiene
                         if nuevo_est == "En Proceso" and not str(df_actual.at[idx, 'N° Cotiz.']).strip():
                             df_actual.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_actual)
-                            
                         fecha_hoy = datetime.now().strftime("%d/%m/%Y")
                         nota_cambio = f"[{fecha_hoy}] 🔄 Movido en Pipeline a: {nuevo_est.upper()}"
                         nota_previa = str(df_actual.at[idx,'Notas'])
                         df_actual.at[idx, 'Notas'] = nota_cambio if nota_previa.strip() in ["", "nan"] else f"{nota_previa}\n{nota_cambio}"
-                        
                         guardar_datos(df_actual)
                         st.rerun()
 
+# --- NEGOCIACIONES (Y GRÁFICOS RESTAURADOS) ---
 elif section == "Negociaciones":
     st.markdown("## :card_index_dividers: Negociaciones Activas")
     df_nego = df[(df['Estado_Nego'] != 'Potencial') & (df['Estado_Nego'] != '')]
@@ -236,14 +234,25 @@ elif section == "Negociaciones":
     k2.metric("💵 Cotizado (ARS)", f"ARS {sum(limpiar_monto_para_suma(x) for x in df_tab['Monto USD / $'] if 'ARS' in str(x).upper()):,.0f}")
     k3.metric("🤝 Cantidad", len(df_tab))
 
-    st.markdown("---"); g1, g2 = st.columns(2)
+    # GRÁFICOS RESTAURADOS A PRUEBA DE FALLOS
+    st.markdown("---")
+    g1, g2 = st.columns(2)
     with g1:
         df_g = df_tab.copy()
         df_g['VAL'] = df_g['Monto USD / $'].apply(lambda x: 0.0 if "ARS" in str(x).upper() else limpiar_monto_para_suma(x))
-        if df_g['VAL'].sum() > 0: st.plotly_chart(px.pie(df_g.groupby('Estado_Nego')['VAL'].sum().reset_index(), values='VAL', names='Estado_Nego', title=f'Dólares por Estado', hole=0.4, color='Estado_Nego', color_discrete_map={'Ganada':'#28a745','Perdida':'#dc3545','En Proceso':'#ffc107'}).update_traces(textinfo='percent+label'), use_container_width=True)
-        else: st.info("Sin montos USD.")
+        if df_g['VAL'].sum() > 0:
+            datos_torta = df_g.groupby('Estado_Nego')['VAL'].sum().reset_index()
+            fig_torta = px.pie(datos_torta, values='VAL', names='Estado_Nego', title='Dólares por Estado', hole=0.4, color='Estado_Nego', color_discrete_map={'Ganada':'#28a745','Perdida':'#dc3545','En Proceso':'#ffc107'})
+            fig_torta.update_traces(textinfo='percent+label')
+            st.plotly_chart(fig_torta, use_container_width=True)
+        else:
+            st.info("No hay montos en USD para graficar.")
     with g2:
-        if not df_tab.empty: st.plotly_chart(px.bar(df_tab['Asesor'].value_counts().reset_index(), x='Asesor', y='count', title='Reparto por Asesor', labels={'count':'Cantidad'}), use_container_width=True)
+        if not df_tab.empty:
+            datos_barras = df_tab['Asesor'].value_counts().reset_index()
+            datos_barras.columns = ['Asesor', 'Cantidad']
+            fig_barras = px.bar(datos_barras, x='Asesor', y='Cantidad', title='Cantidad de Negociaciones', color='Asesor')
+            st.plotly_chart(fig_barras, use_container_width=True)
 
     c_b, c_r = st.columns([4, 1])
     with c_b: busq = st.text_input("🔍 Buscar Cliente/Empresa:")
