@@ -118,6 +118,14 @@ if section == "Potenciales":
     for idx, row in df_pot.iterrows():
         puede_editar = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
         st.markdown(f'<div style="background:white;padding:1em;border-radius:10px;border-left:5px solid #6c757d;margin-bottom:0.5em;box-shadow:0 1px 4px #d0d6e1;color:black;"><b>Cliente:</b> {row.get("Cliente", "")} | <b>Empresa:</b> {row.get("Empresa", "")} <br> <b>Teléfono:</b> {row.get("Telefono", "")} | <b>Email:</b> {row.get("Email", "")}</div>', unsafe_allow_html=True)
+        
+        # ASISTENTE DE LLAMADA - POTENCIALES
+        with st.expander("📞 ASISTENTE DE LLAMADA (Guiones de Descubrimiento)", expanded=False):
+            st.warning("🗣️ **Objetivo de esta llamada:** Descubrir el dolor del cliente y generar interés para enviar presupuesto.")
+            st.markdown("💡 **Tip 1:** ¿Qué desafío estructural o de tiempos los motivó a buscar nuevas herramientas?")
+            st.markdown("💡 **Tip 2:** ¿Qué software están usando hoy y qué es lo que más les frustra de ese proceso?")
+            st.markdown("💡 **Tip 3:** Si pudieras resolver [su problema] hoy mismo, ¿cuánto tiempo/dinero ahorraría tu equipo?")
+        
         with st.expander(f"Ver / Editar a {row.get('Cliente', '')}"):
             if puede_editar:
                 with st.expander("⚙️ Editar Ficha"):
@@ -206,7 +214,7 @@ elif section == "Pipeline":
                         guardar_datos(df_actual)
                         st.rerun()
 
-# --- NEGOCIACIONES (Y GRÁFICOS RESTAURADOS) ---
+# --- NEGOCIACIONES ---
 elif section == "Negociaciones":
     st.markdown("## :card_index_dividers: Negociaciones Activas")
     df_nego = df[(df['Estado_Nego'] != 'Potencial') & (df['Estado_Nego'] != '')]
@@ -234,9 +242,7 @@ elif section == "Negociaciones":
     k2.metric("💵 Cotizado (ARS)", f"ARS {sum(limpiar_monto_para_suma(x) for x in df_tab['Monto USD / $'] if 'ARS' in str(x).upper()):,.0f}")
     k3.metric("🤝 Cantidad", len(df_tab))
 
-    # GRÁFICOS RESTAURADOS A PRUEBA DE FALLOS
-    st.markdown("---")
-    g1, g2 = st.columns(2)
+    st.markdown("---"); g1, g2 = st.columns(2)
     with g1:
         df_g = df_tab.copy()
         df_g['VAL'] = df_g['Monto USD / $'].apply(lambda x: 0.0 if "ARS" in str(x).upper() else limpiar_monto_para_suma(x))
@@ -265,6 +271,14 @@ elif section == "Negociaciones":
     for idx, row in df_f.iterrows():
         est = row.get('Estado_Nego', 'En Proceso'); color = "#28a745" if est == 'Ganada' else "#dc3545" if est == 'Perdida' else "#ffc107"
         st.markdown(f'<div style="background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black;"><span style="float:right;background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold;">{"✅" if est=="Ganada" else "❌" if est=="Perdida" else "⏳"} {est.upper()}</span><b>Cliente:</b> {row.get("Cliente", "")} | <b>Cotiz:</b> {row.get("N° Cotiz.", "N/A")}<br><b>Monto:</b> <span style="color:#2261b6;font-weight:bold;">{row.get("Monto USD / $", "")}</span></div>', unsafe_allow_html=True)
+        
+        # ASISTENTE DE LLAMADA - NEGOCIACIONES (CIERRE)
+        with st.expander("📞 ASISTENTE DE LLAMADA (Manejo de Objeciones de Cierre)", expanded=False):
+            st.warning("🎯 **Modo Cierre Activado:** Aislá la objeción antes de responder o ceder precio.")
+            st.markdown("🛡️ **Si dicen:** *'Llamame la semana que viene'* <br> **Tu respuesta:** *'Entiendo {}. Exactamente, ¿qué va a cambiar de esta semana a la próxima que haga diferente la decisión?'*".format(row.get('Cliente','').split(' ')[0]), unsafe_allow_html=True)
+            st.markdown("🛡️ **Si dicen:** *'Está muy caro / Se va de presupuesto'* <br> **Tu respuesta:** *'Aparte del precio, ¿hay alguna otra cosa que te impida avanzar hoy con nosotros?'* (Si dicen que no, negociás pago. Si dicen que sí, el problema no era el precio).", unsafe_allow_html=True)
+            st.markdown("🛡️ **Si dicen:** *'Lo tengo que consultar con mi socio'* <br> **Tu respuesta:** *'Perfecto. Y vos personalmente, ¿qué le vas a recomendar a tu socio que hagan?'*", unsafe_allow_html=True)
+
         with st.expander("Ver Ficha Completa"):
             puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
             if puede:
