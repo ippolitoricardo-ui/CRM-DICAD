@@ -68,7 +68,7 @@ def get_data_main():
     try: df = conn.read(worksheet="Central Negociaciones")
     except: df = pd.DataFrame(columns=COLUMNS_MAIN)
     if df is None: df = pd.DataFrame(columns=COLUMNS_MAIN)
-    if not df.empty: df.columns = df.columns.astype(str).str.strip() # Limpiador de espacios
+    if not df.empty: df.columns = df.columns.astype(str).str.strip()
     for col in COLUMNS_MAIN:
         if col not in df.columns: df[col] = ""
     df['Telefono'] = df['Telefono'].astype(str).str.strip().str.lstrip("'").replace('#ERROR!', '')
@@ -79,7 +79,7 @@ def get_data_cat():
     try: df = conn.read(worksheet="Catalogo")
     except: df = pd.DataFrame(columns=COLUMNS_CAT)
     if df is None: df = pd.DataFrame(columns=COLUMNS_CAT)
-    if not df.empty: df.columns = df.columns.astype(str).str.strip() # Limpiador de espacios fantasma
+    if not df.empty: df.columns = df.columns.astype(str).str.strip()
     for col in COLUMNS_CAT:
         if col not in df.columns: df[col] = ""
     return df.fillna('')
@@ -134,9 +134,9 @@ df_cat = get_data_cat()
 lista_asesores = ["Todos los Asesores"] + list(USUARIOS.keys())
 index_inicio = lista_asesores.index(st.session_state.usuario_actual) if st.session_state.usuario_actual in lista_asesores else 0
 
-# --- CALCULADORA DE PRODUCTOS ---
+# --- CALCULADORA DE PRODUCTOS (DESCUENTOS INDIVIDUALES) ---
 def modulo_calculadora(key_prefix):
-    st.markdown("### 🛒 Configurador de Cotización")
+    st.markdown("### 🛒 Configurador de Cotización (Descuentos por Producto)")
     if df_cat.empty:
         st.warning("⚠️ No hay productos en el catálogo. Andá a la pestaña 'Catálogo de Productos' para agregarlos.")
         return st.text_input("Monto manual (USD/ARS)", key=f"mm_{key_prefix}"), "", ""
@@ -144,35 +144,50 @@ def modulo_calculadora(key_prefix):
     opciones_prods = df_cat['Producto'].tolist()
     seleccion = st.multiselect("Seleccioná los softwares a cotizar:", opciones_prods, key=f"sel_{key_prefix}")
     
-    subtotal = 0.0
+    subtotal_general = 0.0
+    total_final = 0.0
+    ahorro_total = 0.0
     moneda_ref = "USD"
     nombres_detallados = []
     
     if seleccion:
-        for s in seleccion:
+        st.markdown("---")
+        for i, s in enumerate(seleccion):
             fila_prod = df_cat[df_cat['Producto'] == s].iloc[0]
             precio_val = limpiar_monto_para_suma(fila_prod['Precio'])
-            subtotal += precio_val
             if fila_prod['Moneda']: moneda_ref = str(fila_prod['Moneda']).upper().strip()
-            nombres_detallados.append(f"{s} ({moneda_ref} {precio_val:,.0f})")
             
-        st.markdown(f"**Subtotal de lista:** {moneda_ref} {subtotal:,.2f}")
-        
-        c_d1, c_d2 = st.columns(2)
-        tipo_desc = c_d1.radio("Aplicar Descuento como:", ["Porcentaje (%)", "Monto Fijo"], horizontal=True, key=f"td_{key_prefix}")
-        val_desc = c_d2.number_input("Valor del descuento", min_value=0.0, value=0.0, key=f"vd_{key_prefix}")
-        
-        if "Porcentaje" in tipo_desc:
-            monto_descontado = subtotal * (val_desc / 100)
-            total_final = subtotal - monto_descontado
-            txt_desc = f"{val_desc}%"
-        else:
-            total_final = subtotal - val_desc
-            txt_desc = f"{moneda_ref} {val_desc}"
+            st.markdown(f"**📦 {s}** (Lista: {moneda_ref} {precio_val:,.0f})")
+            
+            c_d1, c_d2, c_d3 = st.columns([1.5, 1.5, 2])
+            tipo_desc = c_d1.selectbox("Descuento en:", ["Porcentaje (%)", "Monto Fijo"], key=f"td_{key_prefix}_{i}")
+            val_desc = c_d2.number_input("Valor", min_value=0.0, value=0.0, key=f"vd_{key_prefix}_{i}")
+            
+            if "Porcentaje" in tipo_desc:
+                monto_desc = precio_val * (val_desc / 100)
+                txt_desc = f"{val_desc}%"
+            else:
+                monto_desc = val_desc
+                txt_desc = f"{moneda_ref} {val_desc}"
+                
+            precio_final_prod = precio_val - monto_desc
+            c_d3.markdown(f"<div style='margin-top:28px; font-weight:bold; color:#28a745; font-size:15px;'>👉 Queda en: {moneda_ref} {precio_final_prod:,.0f}</div>", unsafe_allow_html=True)
+            
+            subtotal_general += precio_val
+            total_final += precio_final_prod
+            ahorro_total += monto_desc
+            
+            detalle = f"{s} ({moneda_ref} {precio_final_prod:,.0f})" if monto_desc > 0 else f"{s} ({moneda_ref} {precio_val:,.0f})"
+            nombres_detallados.append(detalle)
+            
+            st.markdown("<hr style='margin:10px 0; border: 0; border-top: 1px dashed #ccc;'>", unsafe_allow_html=True)
             
         st.success(f"### 💰 TOTAL FINAL A COBRAR: {moneda_ref} {total_final:,.2f}")
+        if ahorro_total > 0:
+            st.info(f"**Resumen para el cliente:** Subtotal de lista: {moneda_ref} {subtotal_general:,.2f} | **Ahorro total: {moneda_ref} {ahorro_total:,.2f}**")
         
-        return f"{moneda_ref} {total_final:,.0f}", " + ".join(nombres_detallados), txt_desc
+        texto_ahorro = f"Ahorro {moneda_ref} {ahorro_total:,.0f}" if ahorro_total > 0 else "Sin descuento"
+        return f"{moneda_ref} {total_final:,.0f}", " + ".join(nombres_detallados), texto_ahorro
     else:
         st.info("Seleccioná al menos un producto para calcular el precio.")
         return "", "", ""
@@ -287,7 +302,7 @@ elif section == "Negociaciones":
         est = row.get('Estado_Nego', 'En Proceso'); color = "#28a745" if est == 'Ganada' else "#dc3545" if est == 'Perdida' else "#ffc107"
         
         prod_badge = f"<br><small style='color:#555;'>📦 <b>Incluye:</b> {row.get('Productos Seleccionados', 'Cotización manual')}</small>" if row.get('Productos Seleccionados') else ""
-        desc_badge = f" | <small style='color:#dc3545;'>Descuento: {row.get('Descuento Aplicado', '')}</small>" if row.get('Descuento Aplicado') else ""
+        desc_badge = f" | <small style='color:#dc3545;'>{row.get('Descuento Aplicado', '')}</small>" if row.get('Descuento Aplicado') and row.get('Descuento Aplicado') != "Sin descuento" else ""
         
         st.markdown(f'<div style="background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black;"><span style="float:right;background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold;">{"✅" if est=="Ganada" else "❌" if est=="Perdida" else "⏳"} {est.upper()}</span><b>Cliente:</b> {row.get("Cliente", "")} | <b>Cotiz:</b> {row.get("N° Cotiz.", "N/A")}<br><b>Monto Final:</b> <span style="color:#2261b6;font-weight:bold;font-size:16px;">{row.get("Monto USD / $", "")}</span>{desc_badge}{prod_badge}</div>', unsafe_allow_html=True)
         
