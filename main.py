@@ -315,6 +315,29 @@ elif section == "Negociaciones":
         with st.expander("Ver Ficha Completa"):
             puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
             
+            if puede:
+                with st.expander("⚙️ Editar Datos del Contacto / Cotización"):
+                    c_e1, c_e2 = st.columns(2)
+                    with c_e1: 
+                        ec = st.text_input("Nombre", row.get('Cliente',''), key=f"ecn_{idx}")
+                        ee = st.text_input("Empresa", row.get('Empresa',''), key=f"een_{idx}")
+                        e_prof = st.text_input("Profesión", row.get('Profesion',''), key=f"eprn_{idx}")
+                        e_cargo = st.text_input("Cargo", row.get('Cargo',''), key=f"ecrn_{idx}")
+                        edm = st.text_input("Corrección Manual Monto Final", row.get('Monto USD / $',''), key=f"edm_{idx}")
+                    with c_e2:
+                        idx_pa = next((i for i, p in enumerate(CODIGOS_PAISES) if str(row.get('Pais','')).lower() in p.lower() and row.get('Pais','') != ""), 0)
+                        ep = st.selectbox("País", CODIGOS_PAISES, index=idx_pa, key=f"epn_{idx}")
+                        e_ciu = st.text_input("Ciudad", row.get('Ciudad',''), key=f"eciun_{idx}")
+                        em = st.text_input("Email", row.get('Email',''), key=f"emn_{idx}")
+                        etel = st.text_input("Teléfono", row.get('Telefono',''), key=f"eteln_{idx}")
+                        edl = st.text_input("Corrección Link PDF", row.get('Link_PDF',''), key=f"edl_{idx}")
+                    if st.button("💾 Actualizar Todo", key=f"becn_{idx}", type="primary"):
+                        p_n, c_n = extraer_pais_codigo(ep)
+                        tel_f = f"{c_n} {etel}" if (etel.strip() and not etel.startswith("+") and c_n) else etel
+                        df_u = get_data_main()
+                        df_u.loc[idx, ['Cliente','Empresa','Profesion','Cargo','Pais','Ciudad','Email','Telefono', 'Monto USD / $', 'Link_PDF']] = [ec, ee, e_prof, e_cargo, p_n, e_ciu, em, tel_f, edm, edl]
+                        guardar_datos(df_u); st.rerun()
+
             col1, col2 = st.columns(2)
             with col1: st.write(f"**Prof:** {row.get('Profesion','')} | **Cargo:** {row.get('Cargo','')}"); st.write(f"**Tel:** {row.get('Telefono','')}"); st.write(f"**Email:** {row.get('Email','')}")
             with col2: st.write(f"**Empresa:** {row.get('Empresa','')}"); st.write(f"**Cotiz:** {row.get('N° Cotiz.','')}"); st.write(f"**Asesor:** {row.get('Asesor','')}")
