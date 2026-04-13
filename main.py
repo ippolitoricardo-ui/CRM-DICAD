@@ -1,9 +1,10 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import pandas as pd
 from streamlit_option_menu import option_menu
 import plotly.express as px
+import urllib.parse
 
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
@@ -25,8 +26,7 @@ CODIGOS_PAISES = [
 
 def extraer_pais_codigo(seleccion):
     if seleccion == "🌎 Otro": return "Otro", ""
-    try:
-        return seleccion.split(" ", 1)[1].split(" (")[0].strip(), seleccion.split(" ", 1)[1].split(" (")[1].replace(")", "").strip()
+    try: return seleccion.split(" ", 1)[1].split(" (")[0].strip(), seleccion.split(" ", 1)[1].split(" (")[1].replace(")", "").strip()
     except: return "Desconocido", ""
 
 def limpiar_monto_para_suma(val_str):
@@ -42,6 +42,24 @@ def limpiar_monto_para_suma(val_str):
         if len(clean_str.split('.')[-1]) == 3: clean_str = clean_str.replace('.', '')
     try: return float(clean_str)
     except: return 0.0
+
+def parsear_fecha_hora(fecha_str):
+    try:
+        parts = str(fecha_str).strip().split()
+        f_obj = datetime.strptime(parts[0], "%d/%m/%Y").date()
+        h_obj = datetime.strptime(parts[1], "%H:%M").time() if len(parts) > 1 else datetime.strptime("10:00", "%H:%M").time()
+        return f_obj, h_obj
+    except: return date.today(), datetime.strptime("10:00", "%H:%M").time()
+
+def generar_link_gcal(cliente, empresa, telefono, fecha_str):
+    try:
+        dt = datetime.strptime(fecha_str, "%d/%m/%Y %H:%M") if len(str(fecha_str)) > 10 else datetime.strptime(fecha_str, "%d/%m/%Y")
+        start_str = dt.strftime("%Y%m%dT%H%M%00")
+        end_str = (dt + timedelta(minutes=30)).strftime("%Y%m%dT%H%M%00")
+        titulo = urllib.parse.quote(f"📞 Llamar a {cliente} ({empresa})")
+        detalles = urllib.parse.quote(f"CRM Recordatorio de Llamada.\n\nEmpresa: {empresa}\nTeléfono: {telefono}")
+        return f"https://calendar.google.com/calendar/render?action=TEMPLATE&text={titulo}&details={detalles}&dates={start_str}/{end_str}"
+    except: return ""
 
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False; st.session_state.usuario_actual = None
@@ -96,10 +114,10 @@ def generar_numero_cotizacion(df):
     numeros = [int(''.join(filter(str.isdigit, str(val)))) for val in df['N° Cotiz.'].dropna() if ''.join(filter(str.isdigit, str(val)))]
     return f"{max(max(numeros) + 1 if numeros else 0, 1000):06d}"
 
-def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_obj, fecha_anterior_str):
-    df_actual = get_data(); fecha_hoy = datetime.now().strftime("%d/%m/%Y"); nueva_fecha_str = nueva_fecha_obj.strftime("%d/%m/%Y")
+def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_str, fecha_anterior_str):
+    df_actual = get_data(); fecha_hoy = datetime.now().strftime("%d/%m/%Y")
     texto_agregado = f"[{fecha_hoy}] 📝 {nueva_nota}" if nueva_nota.strip() else ""
-    if nueva_fecha_str != str(fecha_anterior_str): texto_agregado += f" | 📅 Reprogramado: {nueva_fecha_str}" if texto_agregado else f"[{fecha_hoy}] 📅 Llamada reprogramada: {nueva_fecha_str}"
+    if nueva_fecha_str != str(fecha_anterior_str): texto_agregado += f" | 📅 Reprogramado: {nueva_fecha_str}" if texto_agregado else f"[{fecha_hoy}] 📅 Llamada reprogramada a: {nueva_fecha_str}"
     if texto_agregado: df_actual.at[indice, 'Notas'] = texto_agregado if str(nota_existente).strip() in ["", "nan"] else f"{nota_existente}\n{texto_agregado}"
     df_actual.at[indice, 'Proxima llamada'] = nueva_fecha_str; guardar_datos(df_actual)
 
@@ -117,9 +135,8 @@ if section == "Potenciales":
 
     for idx, row in df_pot.iterrows():
         puede_editar = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
-        st.markdown(f'<div style="background:white;padding:1em;border-radius:10px;border-left:5px solid #6c757d;margin-bottom:0.5em;box-shadow:0 1px 4px #d0d6e1;color:black;"><b>Cliente:</b> {row.get("Cliente", "")} | <b>Empresa:</b> {row.get("Empresa", "")} <br> <b>Teléfono:</b> {row.get("Telefono", "")} | <b>Email:</b> {row.get("Email", "")}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background:white;padding:1em;border-radius:10px;border-left:5px solid #6c757d;margin-bottom:0.5em;box-shadow:0 1px 4px #d0d6e1;color:black;"><b>Cliente:</b> {row.get("Cliente", "")} | <b>Empresa:</b> {row.get("Empresa", "")} <br> <b>Teléfono:</b> {row.get("Telefono", "")} | <b>Próx:</b> {row.get("Proxima llamada", "")}</div>', unsafe_allow_html=True)
         
-        # ASISTENTE DE LLAMADA - POTENCIALES
         with st.expander("📞 ASISTENTE DE LLAMADA (Guiones de Descubrimiento)", expanded=False):
             st.warning("🗣️ **Objetivo de esta llamada:** Descubrir el dolor del cliente y generar interés para enviar presupuesto.")
             st.markdown("💡 **Tip 1:** ¿Qué desafío estructural o de tiempos los motivó a buscar nuevas herramientas?")
@@ -145,15 +162,18 @@ if section == "Potenciales":
 
             st.info(f"**Historial:**\n{row.get('Notas', 'Sin notas.')}")
             if puede_editar:
-                c_n1, c_n2, c_n3 = st.columns([1.2, 2.5, 1])
+                c_n1, c_n2, c_n3 = st.columns([1.8, 2, 1])
                 with c_n1:
-                    try: f_act_obj = datetime.strptime(str(row.get('Proxima llamada', '')).strip(), "%d/%m/%Y").date()
-                    except: f_act_obj = date.today()
-                    n_f = st.date_input("Próxima", value=f_act_obj, key=f"f_p_{idx}")
+                    f_o, h_o = parsear_fecha_hora(row.get('Proxima llamada', ''))
+                    cc1, cc2 = st.columns(2)
+                    with cc1: n_f = st.date_input("Día", value=f_o, key=f"f_p_{idx}")
+                    with cc2: n_h = st.time_input("Hora", value=h_o, key=f"h_p_{idx}")
                 with c_n2: n_n = st.text_input("Nota hoy", key=f"n_p_{idx}")
                 with c_n3: 
                     st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("💾 Guardar", key=f"b_p_{idx}"): guardar_gestion(idx, row.get('Notas',''), n_n, n_f, row.get('Proxima llamada','')); st.rerun()
+                    if st.button("💾 Guardar", key=f"b_p_{idx}"):
+                        fh_str = f"{n_f.strftime('%d/%m/%Y')} {n_h.strftime('%H:%M')}"
+                        guardar_gestion(idx, row.get('Notas',''), n_n, fh_str, row.get('Proxima llamada','')); st.rerun()
                 st.markdown("---")
                 c_p1, c_p2 = st.columns(2)
                 with c_p1: n_m_p = st.text_input("Monto Cotizado (Ej: USD 5000)", key=f"pm_{idx}")
@@ -272,11 +292,10 @@ elif section == "Negociaciones":
         est = row.get('Estado_Nego', 'En Proceso'); color = "#28a745" if est == 'Ganada' else "#dc3545" if est == 'Perdida' else "#ffc107"
         st.markdown(f'<div style="background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black;"><span style="float:right;background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold;">{"✅" if est=="Ganada" else "❌" if est=="Perdida" else "⏳"} {est.upper()}</span><b>Cliente:</b> {row.get("Cliente", "")} | <b>Cotiz:</b> {row.get("N° Cotiz.", "N/A")}<br><b>Monto:</b> <span style="color:#2261b6;font-weight:bold;">{row.get("Monto USD / $", "")}</span></div>', unsafe_allow_html=True)
         
-        # ASISTENTE DE LLAMADA - NEGOCIACIONES (CIERRE)
         with st.expander("📞 ASISTENTE DE LLAMADA (Manejo de Objeciones de Cierre)", expanded=False):
             st.warning("🎯 **Modo Cierre Activado:** Aislá la objeción antes de responder o ceder precio.")
             st.markdown("🛡️ **Si dicen:** *'Llamame la semana que viene'* <br> **Tu respuesta:** *'Entiendo {}. Exactamente, ¿qué va a cambiar de esta semana a la próxima que haga diferente la decisión?'*".format(row.get('Cliente','').split(' ')[0]), unsafe_allow_html=True)
-            st.markdown("🛡️ **Si dicen:** *'Está muy caro / Se va de presupuesto'* <br> **Tu respuesta:** *'Aparte del precio, ¿hay alguna otra cosa que te impida avanzar hoy con nosotros?'* (Si dicen que no, negociás pago. Si dicen que sí, el problema no era el precio).", unsafe_allow_html=True)
+            st.markdown("🛡️ **Si dicen:** *'Está muy caro / Se va de presupuesto'* <br> **Tu respuesta:** *'Aparte del precio, ¿hay alguna otra cosa que te impida avanzar hoy con nosotros?'*", unsafe_allow_html=True)
             st.markdown("🛡️ **Si dicen:** *'Lo tengo que consultar con mi socio'* <br> **Tu respuesta:** *'Perfecto. Y vos personalmente, ¿qué le vas a recomendar a tu socio que hagan?'*", unsafe_allow_html=True)
 
         with st.expander("Ver Ficha Completa"):
@@ -317,15 +336,18 @@ elif section == "Negociaciones":
 
             st.markdown("**📝 Seguimiento:**"); st.caption(row.get('Notas',''))
             if puede:
-                cn1, cn2, cn3 = st.columns([1.2, 2.5, 1])
+                cn1, cn2, cn3 = st.columns([1.8, 2, 1])
                 with cn1:
-                    try: f_a_obj = datetime.strptime(str(row.get('Proxima llamada', '')).strip(), "%d/%m/%Y").date()
-                    except: f_a_obj = date.today()
-                    nf = st.date_input("Próxima", value=f_a_obj, key=f"fgn_{idx}")
+                    f_o, h_o = parsear_fecha_hora(row.get('Proxima llamada', ''))
+                    cc1, cc2 = st.columns(2)
+                    with cc1: nf = st.date_input("Día", value=f_o, key=f"fgn_{idx}")
+                    with cc2: nh = st.time_input("Hora", value=h_o, key=f"hgn_{idx}")
                 with cn2: nn = st.text_input("Nota", key=f"ngn_{idx}")
                 with cn3: 
                     st.markdown("<br>", unsafe_allow_html=True); 
-                    if st.button("💾", key=f"bgn_{idx}"): guardar_gestion(idx, row.get('Notas',''), nn, nf, row.get('Proxima llamada','')); st.rerun()
+                    if st.button("💾", key=f"bgn_{idx}"): 
+                        fh_str = f"{nf.strftime('%d/%m/%Y')} {nh.strftime('%H:%M')}"
+                        guardar_gestion(idx, row.get('Notas',''), nn, fh_str, row.get('Proxima llamada','')); st.rerun()
                 
                 st.markdown("---"); ce1, ce2, ce3 = st.columns([1.5, 2, 1])
                 with ce1: edm = st.text_input("Monto", row.get('Monto USD / $',''), key=f"edm_{idx}")
@@ -360,7 +382,10 @@ elif section == "Agregar Cliente":
     with c2:
         prof = st.text_input("Profesión", key=f"pr_{fk}"); car = st.text_input("Cargo", key=f"ca_{fk}")
         tel = st.text_input("Teléfono (Sin código)", key=f"te_{fk}"); eml = st.text_input("Email", key=f"em_{fk}")
-        px_l = st.date_input("Próxima llamada", key=f"px_{fk}"); cot = st.text_input("N° Cotiz (Vacío=Auto)", key=f"co_{fk}")
+        cc1, cc2 = st.columns(2)
+        with cc1: px_l = st.date_input("Próxima llamada", key=f"px_{fk}")
+        with cc2: px_h = st.time_input("Hora", value=datetime.strptime("10:00", "%H:%M").time(), key=f"pxh_{fk}")
+        cot = st.text_input("N° Cotiz (Vacío=Auto)", key=f"co_{fk}")
         
     ase = st.selectbox("Asesor", list(USUARIOS.keys()), index=list(USUARIOS.keys()).index(st.session_state.usuario_actual) if st.session_state.usuario_actual in USUARIOS else 0, key=f"as_{fk}") if st.session_state.usuario_actual == ADMINISTRADOR else st.session_state.usuario_actual
     if st.session_state.usuario_actual != ADMINISTRADOR: st.write(f"**Asesor:** {ase}")
@@ -377,7 +402,8 @@ elif section == "Agregar Cliente":
                 if any((str(r['Email']).lower().strip() == em_l and em_l) or (str(r['Telefono']).replace(" ","").replace("+","").replace("-","") == te_l and te_l) for _, r in df_t.iterrows()): st.error("🚨 ¡CLIENTE EXISTENTE! Usá 'Nueva Cotización' en Negociaciones.")
                 else:
                     est_i = "Potencial" if "Potencial" in tipo else "En Proceso"; cot_f = cot.strip() if cot.strip() else (generar_numero_cotizacion(df_t) if est_i == "En Proceso" else "")
-                    new = pd.DataFrame([{"Creado":datetime.now().strftime("%d/%m/%Y"),"Cliente":cli,"Profesion":prof,"Pais":p_f,"Ciudad":ciu,"Empresa":emp,"Cargo":car,"Telefono":tel_f,"Email":eml,"N° Cotiz.":cot_f,"Monto USD / $":f"{m_n} {m_v}" if m_v else "","Notas":f"[{datetime.now().strftime('%d/%m/%Y')}] 📝 {n_i}" if n_i else "","Proxima llamada":px_l.strftime("%d/%m/%Y"),"Asesor":ase,"Estado_Nego":est_i,"Link_PDF":l_p}])
+                    fh_str = f"{px_l.strftime('%d/%m/%Y')} {px_h.strftime('%H:%M')}"
+                    new = pd.DataFrame([{"Creado":datetime.now().strftime("%d/%m/%Y"),"Cliente":cli,"Profesion":prof,"Pais":p_f,"Ciudad":ciu,"Empresa":emp,"Cargo":car,"Telefono":tel_f,"Email":eml,"N° Cotiz.":cot_f,"Monto USD / $":f"{m_n} {m_v}" if m_v else "","Notas":f"[{datetime.now().strftime('%d/%m/%Y')}] 📝 {n_i}" if n_i else "","Proxima llamada":fh_str,"Asesor":ase,"Estado_Nego":est_i,"Link_PDF":l_p}])
                     guardar_datos(pd.concat([df_t, new], ignore_index=True)); st.session_state.f_k += 1; st.success("Guardado!"); st.rerun()
 
 elif section == "Calendario":
@@ -389,9 +415,13 @@ elif section == "Calendario":
     df_a = df[df['Estado_Nego'].isin(['En Proceso', 'Potencial'])].copy()
     if df_a.empty: st.success("Al día.")
     else:
-        df_a['F'] = pd.to_datetime(df_a['Proxima llamada'], format='%d/%m/%Y', errors='coerce')
+        df_a['F'] = pd.to_datetime(df_a['Proxima llamada'], format='%d/%m/%Y %H:%M', errors='coerce').fillna(pd.to_datetime(df_a['Proxima llamada'], format='%d/%m/%Y', errors='coerce'))
         for idx, r in df_a.sort_values('F').iterrows():
-            st.markdown(f'<div style="background:#2E3E57;padding:15px;border-radius:10px;margin-bottom:10px;border-left:5px solid #FF6600;"><h4 style="color:white;margin:0;">📅 {r["Proxima llamada"]} | {r["Cliente"]} <span style="font-size:12px;background:#556B8D;padding:3px 8px;border-radius:5px;">{"🎯" if r["Estado_Nego"]=="Potencial" else "💼"}</span></h4><p style="color:#d0d6e1;margin:5px 0;">📞 {r["Telefono"]} | ✉️ {r["Email"]} | 👔 {r["Asesor"]}</p></div>', unsafe_allow_html=True)
+            link_cal = generar_link_gcal(r['Cliente'], r['Empresa'], r['Telefono'], r['Proxima llamada'])
+            btn_cal = f"<a href='{link_cal}' target='_blank' style='text-decoration:none; background-color:#4285F4; color:white; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:bold; margin-left:10px;'>📅 Añadir a Google Calendar</a>" if link_cal else ""
+            
+            st.markdown(f'<div style="background:#2E3E57;padding:15px;border-radius:10px;margin-bottom:10px;border-left:5px solid #FF6600;"><h4 style="color:white;margin:0;">📅 {r["Proxima llamada"]} hs | {r["Cliente"]} <span style="font-size:12px;background:#556B8D;padding:3px 8px;border-radius:5px;margin-left:5px;">{"🎯" if r["Estado_Nego"]=="Potencial" else "💼"}</span> {btn_cal}</h4><p style="color:#d0d6e1;margin:5px 0;">📞 {r["Telefono"]} | ✉️ {r["Email"]} | 👔 {r["Asesor"]}</p></div>', unsafe_allow_html=True)
+            
             if (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == r.get('Asesor', '')):
                 with st.expander("⚙️ Editar"):
                     c_e1, c_e2 = st.columns(2)
