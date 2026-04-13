@@ -72,6 +72,8 @@ def get_data_main():
     for col in COLUMNS_MAIN:
         if col not in df.columns: df[col] = ""
     df['Telefono'] = df['Telefono'].astype(str).str.strip().str.lstrip("'").replace('#ERROR!', '')
+    # Limpiador mágico del .0 en las cotizaciones
+    df['N° Cotiz.'] = df['N° Cotiz.'].astype(str).apply(lambda x: x.split('.')[0] if str(x).endswith('.0') else x)
     return df.fillna('')
 
 @st.cache_data(ttl=30)
@@ -92,7 +94,8 @@ def guardar_datos(df, sheet="Central Negociaciones"):
     st.cache_data.clear()
 
 def generar_numero_cotizacion(df):
-    numeros = [int(''.join(filter(str.isdigit, str(val)))) for val in df['N° Cotiz.'].dropna() if ''.join(filter(str.isdigit, str(val)))]
+    # Ahora corta en el punto decimal ANTES de buscar dígitos, por si quedó algún flotante en memoria
+    numeros = [int(''.join(filter(str.isdigit, str(val).split('.')[0]))) for val in df['N° Cotiz.'].dropna() if ''.join(filter(str.isdigit, str(val).split('.')[0]))]
     return f"{max(max(numeros) + 1 if numeros else 0, 1000):06d}"
 
 def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_str, fecha_anterior_str):
@@ -165,10 +168,8 @@ def modulo_calculadora(key_prefix):
             
             if "Porcentaje" in tipo_desc:
                 monto_desc = precio_val * (val_desc / 100)
-                txt_desc = f"{val_desc}%"
             else:
                 monto_desc = val_desc
-                txt_desc = f"{moneda_ref} {val_desc}"
                 
             precio_final_prod = precio_val - monto_desc
             c_d3.markdown(f"<div style='margin-top:28px; font-weight:bold; color:#28a745; font-size:15px;'>👉 Queda en: {moneda_ref} {precio_final_prod:,.0f}</div>", unsafe_allow_html=True)
