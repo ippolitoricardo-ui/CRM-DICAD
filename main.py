@@ -82,7 +82,7 @@ with st.sidebar:
     st.markdown('<style>[data-testid="stSidebar"] {background-color: #2E3E57 !important;}</style>', unsafe_allow_html=True)
     st.columns([1, 4, 1])[1].image("logo_dicad.png", use_column_width=True) 
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p><br>", unsafe_allow_html=True) 
-    section = option_menu(None, ["Potenciales", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario"], icons=["person-bounding-box", "kanban", "briefcase", "person-plus", "calendar-date"], default_index=2, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
+    section = option_menu(None, ["Potenciales", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario"], icons=["person-bounding-box", "kanban", "briefcase", "person-plus", "calendar-date"], default_index=4, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
     st.markdown("---")
     st.markdown(f"<div style='text-align: center; color: white; font-size: 14px; margin-bottom: 10px;'>{'👑 Admin' if st.session_state.usuario_actual == ADMINISTRADOR else '💼 Asesor'}: <b>{st.session_state.usuario_actual}</b></div>", unsafe_allow_html=True)
     if st.button("🚪 Cerrar Sesión", use_container_width=True): st.session_state.autenticado = False; st.session_state.usuario_actual = None; st.rerun()
@@ -420,7 +420,7 @@ elif section == "Calendario":
             link_cal = generar_link_gcal(r['Cliente'], r['Empresa'], r['Telefono'], r['Proxima llamada'])
             btn_cal = f"<a href='{link_cal}' target='_blank' style='text-decoration:none; background-color:#4285F4; color:white; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:bold; margin-left:10px;'>📅 Añadir a Google Calendar</a>" if link_cal else ""
             
-            st.markdown(f'<div style="background:#2E3E57;padding:15px;border-radius:10px;margin-bottom:10px;border-left:5px solid #FF6600;"><h4 style="color:white;margin:0;">📅 {r["Proxima llamada"]} hs | {r["Cliente"]} <span style="font-size:12px;background:#556B8D;padding:3px 8px;border-radius:5px;margin-left:5px;">{"🎯" if r["Estado_Nego"]=="Potencial" else "💼"}</span> {btn_cal}</h4><p style="color:#d0d6e1;margin:5px 0;">📞 {r["Telefono"]} | ✉️ {r["Email"]} | 👔 {r["Asesor"]}</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="background:#2E3E57;padding:15px;border-radius:10px;margin-bottom:10px;border-left:5px solid #FF6600;"><h4 style="color:white;margin:0;">📅 {r["Proxima llamada"]} | {r["Cliente"]} <span style="font-size:12px;background:#556B8D;padding:3px 8px;border-radius:5px;margin-left:5px;">{"🎯" if r["Estado_Nego"]=="Potencial" else "💼"}</span> {btn_cal}</h4><p style="color:#d0d6e1;margin:5px 0;">📞 {r["Telefono"]} | ✉️ {r["Email"]} | 👔 {r["Asesor"]}</p></div>', unsafe_allow_html=True)
             
             if (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == r.get('Asesor', '')):
                 with st.expander("⚙️ Editar"):
@@ -430,8 +430,18 @@ elif section == "Calendario":
                         idx_pa = next((i for i, p in enumerate(CODIGOS_PAISES) if str(r.get('Pais','')).lower() in p.lower() and r.get('Pais','') != ""), 0)
                         ep = st.selectbox("País", CODIGOS_PAISES, index=idx_pa, key=f"ep_{idx}"); e_ciu = st.text_input("Ciudad", r.get('Ciudad',''), key=f"eci_{idx}")
                         em = st.text_input("Email", r.get('Email',''), key=f"em_{idx}"); etel = st.text_input("Teléfono", r.get('Telefono',''), key=f"ete_{idx}")
+                    
+                    st.markdown("---")
+                    c_f1, c_f2 = st.columns(2)
+                    f_val, h_val = parsear_fecha_hora(r.get('Proxima llamada', ''))
+                    with c_f1: e_f = st.date_input("Reprogramar Día", value=f_val, key=f"ef_{idx}")
+                    with c_f2: e_h = st.time_input("Reprogramar Hora", value=h_val, key=f"eh_{idx}")
+
                     if st.button("💾 Guardar", key=f"be_{idx}"):
                         p_n, c_n = extraer_pais_codigo(ep)
                         tel_f = f"{c_n} {etel}" if (etel.strip() and not etel.startswith("+") and c_n) else etel
-                        df_u = get_data(); df_u.loc[idx, ['Cliente','Empresa','Profesion','Cargo','Pais','Ciudad','Email','Telefono']] = [ec, ee, e_prof, e_cargo, p_n, e_ciu, em, tel_f]
-                        guardar_datos(df_u); st.rerun()
+                        fh_str = f"{e_f.strftime('%d/%m/%Y')} {e_h.strftime('%H:%M')}"
+                        df_u = get_data()
+                        df_u.loc[idx, ['Cliente','Empresa','Profesion','Cargo','Pais','Ciudad','Email','Telefono', 'Proxima llamada']] = [ec, ee, e_prof, e_cargo, p_n, e_ciu, em, tel_f, fh_str]
+                        guardar_datos(df_u)
+                        st.rerun()
