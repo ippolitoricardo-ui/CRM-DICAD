@@ -10,7 +10,7 @@ st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
 USUARIOS = st.secrets["passwords"]
 ADMINISTRADOR = "Ricardo Ippolito"
-GSHEET_URL = st.secrets.get("SHEET_URL", "https://docs.google.com/spreadsheets/d/___/edit#gid=0")
+GSHEET_URL = st.secrets.get("SHEET_URL", "")
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 CODIGOS_PAISES = [
@@ -65,8 +65,10 @@ def generar_link_gcal(cliente, empresa, telefono, fecha_str):
 
 @st.cache_data(ttl=30)
 def get_data_main():
-    df = conn.read(worksheet="Central Negociaciones")
+    try: df = conn.read(worksheet="Central Negociaciones")
+    except: df = pd.DataFrame(columns=COLUMNS_MAIN)
     if df is None: df = pd.DataFrame(columns=COLUMNS_MAIN)
+    if not df.empty: df.columns = df.columns.astype(str).str.strip() # Limpiador de espacios
     for col in COLUMNS_MAIN:
         if col not in df.columns: df[col] = ""
     df['Telefono'] = df['Telefono'].astype(str).str.strip().str.lstrip("'").replace('#ERROR!', '')
@@ -77,6 +79,7 @@ def get_data_cat():
     try: df = conn.read(worksheet="Catalogo")
     except: df = pd.DataFrame(columns=COLUMNS_CAT)
     if df is None: df = pd.DataFrame(columns=COLUMNS_CAT)
+    if not df.empty: df.columns = df.columns.astype(str).str.strip() # Limpiador de espacios fantasma
     for col in COLUMNS_CAT:
         if col not in df.columns: df[col] = ""
     return df.fillna('')
@@ -197,11 +200,20 @@ if section == "Catálogo de Productos":
                         st.success("¡Producto cargado exitosamente!"); st.rerun()
     
     st.markdown("---")
+    c_cat1, c_cat2 = st.columns([4,1])
+    with c_cat1: st.write("Lista de productos activos")
+    with c_cat2: 
+        if st.button("🔄 Refrescar Catálogo", use_container_width=True): st.cache_data.clear(); st.rerun()
     st.dataframe(df_cat, use_container_width=True, hide_index=True)
 
 # --- AGREGAR CLIENTE ---
 elif section == "Agregar Cliente":
-    st.markdown("## 🙋‍♂️ Nuevo Contacto")
+    c_t, c_b = st.columns([4, 1])
+    with c_t: st.markdown("## 🙋‍♂️ Nuevo Contacto")
+    with c_b: 
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Refrescar Precios", use_container_width=True): st.cache_data.clear(); st.rerun()
+
     if 'f_k' not in st.session_state: st.session_state.f_k = 0
     fk = st.session_state.f_k
     
