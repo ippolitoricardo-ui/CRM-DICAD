@@ -5,6 +5,12 @@ import pandas as pd
 from streamlit_option_menu import option_menu
 import plotly.express as px
 import urllib.parse
+import json
+import io
+try:
+    from docxtpl import DocxTemplate
+except ImportError:
+    st.error("🚨 Falta instalar docxtpl. Escribí 'pip install docxtpl' en la terminal de Cursor y agregalo a requirements.txt.")
 
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
@@ -63,6 +69,51 @@ def generar_link_gcal(cliente, empresa, telefono, fecha_str):
         return f"https://calendar.google.com/calendar/render?action=TEMPLATE&text={titulo}&details={detalles}&dates={start_str}/{end_str}"
     except: return ""
 
+# --- MOTOR DE DOCUMENTOS ---
+def procesar_word(row, obs, tipo_doc):
+    plantilla = "plantilla_arg.docx" if "Argentina" in tipo_doc else "plantilla_int.docx"
+    try: 
+        doc = DocxTemplate(plantilla)
+    except Exception as e: 
+        return None, f"🚨 No se encontró el archivo '{plantilla}' en tu carpeta. Asegurate de haberlo guardado ahí."
+
+    try: 
+        prods_data = json.loads(row['Productos Seleccionados'])
+        subtotal_bruto = sum(float(p['raw_precio']) for p in prods_data)
+    except:
+        prods_data = [{"nombre": str(row.get('Productos Seleccionados', 'Cotización General')), "desc": "Cotización Manual o antigua", "cantidad": "1 pcs.", "precio": row['Monto USD / $'], "desc_val": "0", "importe": row['Monto USD / $']}]
+        subtotal_bruto = limpiar_monto_para_suma(row['Monto USD / $'])
+
+    val_descuento_final = limpiar_monto_para_suma(row['Monto USD / $'])
+    descuento_total = subtotal_bruto - val_descuento_final
+
+    impuesto_pct = 0.21 if "Argentina" in tipo_doc else 0.05
+    impuestos = val_descuento_final * impuesto_pct
+    total_pagar = val_descuento_final + impuestos
+
+    moneda = "USD" if "USD" in str(row['Monto USD / $']).upper() else "ARS"
+
+    contexto = {
+        "cliente": row['Cliente'], 
+        "empresa": row['Empresa'], 
+        "telefono": row['Telefono'],
+        "asesor": row['Asesor'], 
+        "fecha": date.today().strftime("%d/%m/%Y"), 
+        "cotiz": row['N° Cotiz.'],
+        "productos": prods_data,
+        "subtotal": f"{moneda} {subtotal_bruto:,.2f}",
+        "descuento": f"{moneda} {descuento_total:,.2f}",
+        "valor_descuento": f"{moneda} {val_descuento_final:,.2f}",
+        "impuestos": f"{moneda} {impuestos:,.2f}",
+        "total": f"{moneda} {total_pagar:,.2f}",
+        "observaciones": obs
+    }
+
+    doc.render(contexto)
+    bio = io.BytesIO()
+    doc.save(bio)
+    return bio.getvalue(), "OK"
+
 @st.cache_data(ttl=30)
 def get_data_main():
     try: df = conn.read(worksheet="Central Negociaciones")
@@ -72,7 +123,6 @@ def get_data_main():
     for col in COLUMNS_MAIN:
         if col not in df.columns: df[col] = ""
     df['Telefono'] = df['Telefono'].astype(str).str.strip().str.lstrip("'").replace('#ERROR!', '')
-    # Limpiador mágico del .0 en las cotizaciones
     df['N° Cotiz.'] = df['N° Cotiz.'].astype(str).apply(lambda x: x.split('.')[0] if str(x).endswith('.0') else x)
     return df.fillna('')
 
@@ -94,7 +144,6 @@ def guardar_datos(df, sheet="Central Negociaciones"):
     st.cache_data.clear()
 
 def generar_numero_cotizacion(df):
-    # Ahora corta en el punto decimal ANTES de buscar dígitos, por si quedó algún flotante en memoria
     numeros = [int(''.join(filter(str.isdigit, str(val).split('.')[0]))) for val in df['N° Cotiz.'].dropna() if ''.join(filter(str.isdigit, str(val).split('.')[0]))]
     return f"{max(max(numeros) + 1 if numeros else 0, 1000):06d}"
 
@@ -137,21 +186,16 @@ df_cat = get_data_cat()
 lista_asesores = ["Todos los Asesores"] + list(USUARIOS.keys())
 index_inicio = lista_asesores.index(st.session_state.usuario_actual) if st.session_state.usuario_actual in lista_asesores else 0
 
-# --- CALCULADORA DE PRODUCTOS (DESCUENTOS INDIVIDUALES) ---
+# --- CALCULADORA DE PRODUCTOS JSON ---
 def modulo_calculadora(key_prefix):
-    st.markdown("### 🛒 Configurador de Cotización (Descuentos por Producto)")
+    st.markdown("### 🛒 Configurador de Cotización")
     if df_cat.empty:
-        st.warning("⚠️ No hay productos en el catálogo. Andá a la pestaña 'Catálogo de Productos' para agregarlos.")
-        return st.text_input("Monto manual (USD/ARS)", key=f"mm_{key_prefix}"), "", ""
+        st.warning("⚠️ No hay productos en el catálogo."); return st.text_input("Monto", key=f"mm_{key_prefix}"), "", ""
     
     opciones_prods = df_cat['Producto'].tolist()
     seleccion = st.multiselect("Seleccioná los softwares a cotizar:", opciones_prods, key=f"sel_{key_prefix}")
     
-    subtotal_general = 0.0
-    total_final = 0.0
-    ahorro_total = 0.0
-    moneda_ref = "USD"
-    nombres_detallados = []
+    subtotal_general = 0.0; total_final = 0.0; ahorro_total = 0.0; moneda_ref = "USD"; json_data = []
     
     if seleccion:
         st.markdown("---")
@@ -161,36 +205,31 @@ def modulo_calculadora(key_prefix):
             if fila_prod['Moneda']: moneda_ref = str(fila_prod['Moneda']).upper().strip()
             
             st.markdown(f"**📦 {s}** (Lista: {moneda_ref} {precio_val:,.0f})")
-            
             c_d1, c_d2, c_d3 = st.columns([1.5, 1.5, 2])
             tipo_desc = c_d1.selectbox("Descuento en:", ["Porcentaje (%)", "Monto Fijo"], key=f"td_{key_prefix}_{i}")
             val_desc = c_d2.number_input("Valor", min_value=0.0, value=0.0, key=f"vd_{key_prefix}_{i}")
             
-            if "Porcentaje" in tipo_desc:
-                monto_desc = precio_val * (val_desc / 100)
-            else:
-                monto_desc = val_desc
+            if "Porcentaje" in tipo_desc: monto_desc = precio_val * (val_desc / 100); txt_desc = f"{val_desc}%"
+            else: monto_desc = val_desc; txt_desc = f"{moneda_ref} {val_desc}"
                 
             precio_final_prod = precio_val - monto_desc
             c_d3.markdown(f"<div style='margin-top:28px; font-weight:bold; color:#28a745; font-size:15px;'>👉 Queda en: {moneda_ref} {precio_final_prod:,.0f}</div>", unsafe_allow_html=True)
             
-            subtotal_general += precio_val
-            total_final += precio_final_prod
-            ahorro_total += monto_desc
+            subtotal_general += precio_val; total_final += precio_final_prod; ahorro_total += monto_desc
             
-            detalle = f"{s} ({moneda_ref} {precio_final_prod:,.0f})" if monto_desc > 0 else f"{s} ({moneda_ref} {precio_val:,.0f})"
-            nombres_detallados.append(detalle)
-            
+            json_data.append({
+                "nombre": s, "desc": fila_prod['Descripcion'], "cantidad": "1 pcs.",
+                "precio": f"{moneda_ref} {precio_val:,.0f}", "desc_val": txt_desc,
+                "importe": f"{moneda_ref} {precio_final_prod:,.0f}",
+                "raw_precio": precio_val, "raw_importe": precio_final_prod
+            })
             st.markdown("<hr style='margin:10px 0; border: 0; border-top: 1px dashed #ccc;'>", unsafe_allow_html=True)
             
         st.success(f"### 💰 TOTAL FINAL A COBRAR: {moneda_ref} {total_final:,.2f}")
-        if ahorro_total > 0:
-            st.info(f"**Resumen para el cliente:** Subtotal de lista: {moneda_ref} {subtotal_general:,.2f} | **Ahorro total: {moneda_ref} {ahorro_total:,.2f}**")
-        
         texto_ahorro = f"Ahorro {moneda_ref} {ahorro_total:,.0f}" if ahorro_total > 0 else "Sin descuento"
-        return f"{moneda_ref} {total_final:,.0f}", " + ".join(nombres_detallados), texto_ahorro
+        return f"{moneda_ref} {total_final:,.0f}", json.dumps(json_data), texto_ahorro
     else:
-        st.info("Seleccioná al menos un producto para calcular el precio.")
+        st.info("Seleccioná al menos un producto.")
         return "", "", ""
 
 # --- CATÁLOGO ---
@@ -249,7 +288,6 @@ elif section == "Agregar Cliente":
     with cc3: cot = st.text_input("N° Cotiz (Vacío=Auto)", key=f"co_{fk}")
     
     ase = st.selectbox("Asesor Asignado", list(USUARIOS.keys()), index=list(USUARIOS.keys()).index(st.session_state.usuario_actual) if st.session_state.usuario_actual in USUARIOS else 0, key=f"as_{fk}") if st.session_state.usuario_actual == ADMINISTRADOR else st.session_state.usuario_actual
-    if st.session_state.usuario_actual != ADMINISTRADOR: st.write(f"**Asesor Asignado:** {ase}")
     
     monto_final, prods_final, desc_final = "", "", ""
     if "Negociación" in tipo:
@@ -302,7 +340,13 @@ elif section == "Negociaciones":
     for idx, row in df_f.iterrows():
         est = row.get('Estado_Nego', 'En Proceso'); color = "#28a745" if est == 'Ganada' else "#dc3545" if est == 'Perdida' else "#ffc107"
         
-        prod_badge = f"<br><small style='color:#555;'>📦 <b>Incluye:</b> {row.get('Productos Seleccionados', 'Cotización manual')}</small>" if row.get('Productos Seleccionados') else ""
+        try:
+            prods_json = json.loads(row.get('Productos Seleccionados', '[]'))
+            nombres_p = [p['nombre'] for p in prods_json]
+            texto_prods = " + ".join(nombres_p)
+        except: texto_prods = str(row.get('Productos Seleccionados', ''))
+        
+        prod_badge = f"<br><small style='color:#555;'>📦 <b>Incluye:</b> {texto_prods}</small>" if texto_prods else ""
         desc_badge = f" | <small style='color:#dc3545;'>{row.get('Descuento Aplicado', '')}</small>" if row.get('Descuento Aplicado') and row.get('Descuento Aplicado') != "Sin descuento" else ""
         
         st.markdown(f'<div style="background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black;"><span style="float:right;background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold;">{"✅" if est=="Ganada" else "❌" if est=="Perdida" else "⏳"} {est.upper()}</span><b>Cliente:</b> {row.get("Cliente", "")} | <b>Cotiz:</b> {row.get("N° Cotiz.", "N/A")}<br><b>Monto Final:</b> <span style="color:#2261b6;font-weight:bold;font-size:16px;">{row.get("Monto USD / $", "")}</span>{desc_badge}{prod_badge}</div>', unsafe_allow_html=True)
@@ -317,6 +361,21 @@ elif section == "Negociaciones":
             puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
             
             if puede:
+                # --- NUEVO MOTOR DE DOCUMENTOS WORD ---
+                st.markdown("### 📄 Generar Presupuesto Word")
+                c_wd1, c_wd2 = st.columns([2, 1])
+                with c_wd1: obs_word = st.text_area("Observaciones para el cliente:", key=f"obs_w_{idx}")
+                with c_wd2: tipo_plantilla = st.radio("Tipo de Presupuesto:", ["Argentina (IVA 21%)", "Internacional (Gasto Adm 5%)"], key=f"tpl_{idx}")
+                
+                if st.button("⚙️ Procesar Archivo Word", key=f"btn_w_{idx}"):
+                    data_file, status = procesar_word(row, obs_word, tipo_plantilla)
+                    if data_file: st.session_state[f"doc_ready_{idx}"] = data_file
+                    else: st.error(status)
+                
+                if st.session_state.get(f"doc_ready_{idx}"):
+                    st.download_button(label="⬇️ Descargar Presupuesto Listo (.docx)", data=st.session_state[f"doc_ready_{idx}"], file_name=f"Presupuesto_{row['Cliente'].replace(' ','_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"dl_{idx}")
+                st.markdown("---")
+
                 with st.expander("⚙️ Editar Datos del Contacto / Cotización"):
                     c_e1, c_e2 = st.columns(2)
                     with c_e1: 
@@ -342,15 +401,15 @@ elif section == "Negociaciones":
             col1, col2 = st.columns(2)
             with col1: st.write(f"**Prof:** {row.get('Profesion','')} | **Cargo:** {row.get('Cargo','')}"); st.write(f"**Tel:** {row.get('Telefono','')}"); st.write(f"**Email:** {row.get('Email','')}")
             with col2: st.write(f"**Empresa:** {row.get('Empresa','')}"); st.write(f"**Cotiz:** {row.get('N° Cotiz.','')}"); st.write(f"**Asesor:** {row.get('Asesor','')}")
-            if row.get('Link_PDF'): st.link_button("📄 Ver Presupuesto PDF", row['Link_PDF'], use_container_width=True)
+            if row.get('Link_PDF'): st.link_button("📄 Ver Presupuesto Subido (Nube)", row['Link_PDF'], use_container_width=True)
 
             if puede:
                 st.markdown("---"); st.markdown("### ➕ Generar Nueva Cotización")
                 m_f, p_f, d_f = modulo_calculadora(f"nc_{idx}")
                 c_nc1, c_nc2 = st.columns(2)
                 with c_nc1: ncc = st.text_input("N° Cotiz (Vacío=Auto)", key=f"ncc_{idx}")
-                with c_nc2: ncp = st.text_input("Link al PDF (Opcional)", key=f"ncp_{idx}")
-                if st.button("🚀 Crear Cotización Nueva", key=f"bnc_{idx}", type="primary"):
+                with c_nc2: ncp = st.text_input("Link al PDF en la nube (Opcional)", key=f"ncp_{idx}")
+                if st.button("🚀 Crear Cotización Nueva y Guardar", key=f"bnc_{idx}", type="primary"):
                     df_n = get_data_main(); f_h = datetime.now().strftime("%d/%m/%Y"); num_c = ncc if ncc else generar_numero_cotizacion(df_n)
                     new_r = pd.DataFrame([{"Creado":f_h,"Cliente":row['Cliente'],"Empresa":row['Empresa'],"Profesion":row['Profesion'],"Cargo":row['Cargo'],"Pais":row['Pais'],"Ciudad":row['Ciudad'],"Telefono":row['Telefono'],"Email":row['Email'],"N° Cotiz.":num_c,"Monto USD / $":m_f,"Asesor":row['Asesor'],"Estado_Nego":"En Proceso","Link_PDF":ncp, "Productos Seleccionados":p_f, "Descuento Aplicado":d_f}])
                     guardar_datos(pd.concat([df_n, new_r], ignore_index=True)); st.rerun()
