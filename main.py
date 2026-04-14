@@ -145,6 +145,7 @@ def procesar_excel(row, obs, tipo_doc):
     ws.page_margins.right = 0.2
     ws.page_margins.top = 0.4
     ws.page_margins.bottom = 0.4
+    ws.page_setup.orientation = "landscape"
 
     # Centrar horizontalmente para que quede prolijo
     ws.print_options.horizontalCentered = True
