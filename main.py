@@ -69,7 +69,7 @@ def generar_link_gcal(cliente, empresa, telefono, fecha_str):
         return f"https://calendar.google.com/calendar/render?action=TEMPLATE&text={titulo}&details={detalles}&dates={start_str}/{end_str}"
     except: return ""
 
-# --- MOTOR DE DOCUMENTOS ---
+# --- MOTOR DE DOCUMENTOS (VERSIÓN BLINDADA) ---
 def procesar_word(row, obs, tipo_doc):
     plantilla = "plantilla_arg.docx" if "Argentina" in tipo_doc else "plantilla_int.docx"
     try: 
@@ -109,10 +109,14 @@ def procesar_word(row, obs, tipo_doc):
         "observaciones": obs
     }
 
-    doc.render(contexto)
-    bio = io.BytesIO()
-    doc.save(bio)
-    return bio.getvalue(), "OK"
+    # Este Try-Except es el que nos va a mostrar el error real de Word en pantalla
+    try:
+        doc.render(contexto)
+        bio = io.BytesIO()
+        doc.save(bio)
+        return bio.getvalue(), "OK"
+    except Exception as e:
+        return None, f"🚨 ERROR EN LA PLANTILLA DE WORD: {str(e)}"
 
 @st.cache_data(ttl=30)
 def get_data_main():
@@ -370,7 +374,7 @@ elif section == "Negociaciones":
                 if st.button("⚙️ Procesar Archivo Word", key=f"btn_w_{idx}"):
                     data_file, status = procesar_word(row, obs_word, tipo_plantilla)
                     if data_file: st.session_state[f"doc_ready_{idx}"] = data_file
-                    else: st.error(status)
+                    else: st.error(status) # ACÁ VA A SALIR EL ERROR DESENMASCARADO
                 
                 if st.session_state.get(f"doc_ready_{idx}"):
                     st.download_button(label="⬇️ Descargar Presupuesto Listo (.docx)", data=st.session_state[f"doc_ready_{idx}"], file_name=f"Presupuesto_{row['Cliente'].replace(' ','_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"dl_{idx}")
