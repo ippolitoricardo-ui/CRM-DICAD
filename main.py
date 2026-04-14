@@ -140,6 +140,15 @@ def procesar_excel(row, obs, tipo_doc):
     ws.page_setup.fitToHeight = 1
     ws.page_setup.fitToWidth = 1
 
+    # NUEVO: Achicar márgenes para que la tabla escale más grande
+    ws.page_margins.left = 0.2
+    ws.page_margins.right = 0.2
+    ws.page_margins.top = 0.4
+    ws.page_margins.bottom = 0.4
+
+    # Centrar horizontalmente para que quede prolijo
+    ws.print_options.horizontalCentered = True
+    
     # Guardar a Memoria
     output = io.BytesIO()
     wb.save(output)
