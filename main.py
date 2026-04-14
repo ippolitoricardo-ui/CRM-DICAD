@@ -135,6 +135,10 @@ def procesar_excel(row, obs, tipo_doc):
 
     # Inyección de Observaciones
     ws['A31'] = f"Observaciones: {obs}"
+    # Forzar configuración de impresión a 1 sola página
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToHeight = 1
+    ws.page_setup.fitToWidth = 1
 
     # Guardar a Memoria
     output = io.BytesIO()
