@@ -34,7 +34,6 @@ CODIGOS_PAISES = [
     "🇹🇹 Trinidad y Tobago (+1)", "🇺🇾 Uruguay (+598)", "🇻🇪 Venezuela (+58)", "🌎 Otro"
 ]
 
-# NUEVO: Se agrega "N° Nego" a la estructura principal
 COLUMNS_MAIN = ["N° Nego", "Cliente", "Profesion", "Direccion", "Pais", "Ciudad", "Estado /Prov.", "Empresa", "Cargo", "Telefono", "Email", "N° Cotiz.", "Monto USD / $", "Notas", "Proxima llamada", "Creado", "Asesor", "Estado_Nego", "Link_PDF", "Productos Seleccionados", "Descuento Aplicado"]
 COLUMNS_CAT = ["Producto", "Descripcion", "Categoria", "Moneda", "Precio"]
 
@@ -193,13 +192,14 @@ def generar_numero_cotizacion(df):
     numeros = [int(''.join(filter(str.isdigit, str(val).split('.')[0]))) for val in df['N° Cotiz.'].dropna() if ''.join(filter(str.isdigit, str(val).split('.')[0]))]
     return f"{max(max(numeros) + 1 if numeros else 0, 1000):06d}"
 
-# NUEVO: Función para generar N° de Negociación único
 def generar_numero_negociacion(df):
     if 'N° Nego' not in df.columns: return "NEG-1001"
     numeros = []
     for val in df['N° Nego'].dropna():
-        digits = ''.join(filter(str.isdigit, str(val)))
-        if digits: numeros.append(int(digits))
+        val_str = str(val)
+        if val_str.startswith('NEG-'):
+            digits = ''.join(filter(str.isdigit, val_str))
+            if digits: numeros.append(int(digits))
     return f"NEG-{max(max(numeros) + 1 if numeros else 0, 1001):04d}"
 
 def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_str, fecha_anterior_str):
@@ -380,7 +380,7 @@ elif section == "Agregar Cliente":
                     est_i = "Potencial" if "Potencial" in tipo else "En Proceso"
                     cot_f = cot.strip() if cot.strip() else (generar_numero_cotizacion(df) if est_i == "En Proceso" else "")
                     fh_str = f"{px_l.strftime('%d/%m/%Y')} {px_h.strftime('%H:%M')}"
-                    nego_id = generar_numero_negociacion(df) # Asigna ID Padre
+                    nego_id = generar_numero_negociacion(df)
                     
                     new = pd.DataFrame([{
                         "N° Nego": nego_id, "Creado": datetime.now().strftime("%d/%m/%Y"),
@@ -403,7 +403,10 @@ elif section == "Negociaciones":
         c1, c2, c3 = st.columns(3)
         c1.metric("💰 Total Empresa (USD)", f"USD {sum(limpiar_monto_para_suma(x) for x in df_nego['Monto USD / $'] if 'ARS' not in str(x).upper()):,.0f}")
         c2.metric("💵 Total Empresa (ARS)", f"ARS {sum(limpiar_monto_para_suma(x) for x in df_nego['Monto USD / $'] if 'ARS' in str(x).upper()):,.0f}")
-        c3.metric("🤝 Negociaciones Totales", len(df_nego['N° Nego'].unique())) # Cuenta negociaciones únicas, no cotizaciones
+        
+        # Filtramos 'nan' y vacíos para que no los cuente mal
+        negos_validas = [n for n in df_nego['N° Nego'].unique() if str(n).strip() and str(n) != 'nan']
+        c3.metric("🤝 Negociaciones Totales", len(negos_validas))
         st.markdown("---")
 
     asesor_sel = st.selectbox("Seleccionar Asesor:", lista_asesores, index=index_inicio)
@@ -420,7 +423,11 @@ elif section == "Negociaciones":
     for idx, row in df_f.iterrows():
         est = row.get('Estado_Nego', 'En Proceso'); color = "#28a745" if est == 'Ganada' else "#dc3545" if est == 'Perdida' else "#ffc107"
         prox_llamada = row.get('Proxima llamada', '')
-        nego_codigo = row.get('N° Nego', 'S/N')
+        
+        # FIX PARA CLIENTES VIEJOS: Si no tiene N° Nego, mostramos "S/N" visualmente.
+        nego_codigo = str(row.get('N° Nego', '')).strip()
+        if not nego_codigo or nego_codigo == 'nan': 
+            nego_codigo = "S/N"
         
         try:
             prods_json = json.loads(row.get('Productos Seleccionados', '[]'))
@@ -432,7 +439,6 @@ elif section == "Negociaciones":
         desc_badge = f" | <small style='color:#dc3545;'>{row.get('Descuento Aplicado', '')}</small>" if row.get('Descuento Aplicado') and row.get('Descuento Aplicado') != "Sin descuento" else ""
         badge_fecha = f"<br><span style='background:#6c757d;color:white;padding:4px 8px;border-radius:6px;font-size:11px;font-weight:bold; display:inline-block; margin-top:5px;'>📅 {prox_llamada}</span>" if str(prox_llamada).strip() else ""
         
-        # Tarjeta actualizada con ID de Negociación destacado
         html_card = f"<div style='background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black; overflow:hidden;'><div style='float:right; text-align:right;'><span style='background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold; display:inline-block;'>{'✅' if est=='Ganada' else '❌' if est=='Perdida' else '⏳'} {est.upper()}</span>{badge_fecha}</div><b>Nego:</b> <span style='color:#FF6600;font-weight:bold;'>{nego_codigo}</span> | <b>Cliente:</b> {row.get('Cliente', '')} | <b>Cotiz:</b> {row.get('N° Cotiz.', 'N/A')}<br><b>Monto Final:</b> <span style='color:#2261b6;font-weight:bold;font-size:16px;'>{row.get('Monto USD / $', '')}</span>{desc_badge}{prod_badge}</div>"
         st.markdown(html_card, unsafe_allow_html=True)
         
@@ -501,6 +507,12 @@ elif section == "Negociaciones":
                         df_n = get_data_main()
                         f_h = datetime.now().strftime("%d/%m/%Y")
                         num_c = ncc if ncc else df_n.at[idx, 'N° Cotiz.']
+                        
+                        # PARCHE DE SEGURIDAD PARA CLIENTES VIEJOS
+                        id_padre = str(df_n.at[idx, 'N° Nego']).strip()
+                        if not id_padre or id_padre == 'nan': 
+                            df_n.at[idx, 'N° Nego'] = generar_numero_negociacion(df_n)
+                            
                         df_n.at[idx, 'N° Cotiz.'] = num_c
                         df_n.at[idx, 'Monto USD / $'] = m_f
                         df_n.at[idx, 'Link_PDF'] = ncp if ncp else df_n.at[idx, 'Link_PDF']
@@ -513,9 +525,12 @@ elif section == "Negociaciones":
                         df_n = get_data_main()
                         f_h = datetime.now().strftime("%d/%m/%Y")
                         num_c = ncc if ncc else generar_numero_cotizacion(df_n)
-                        # Clona la negociación pero crea un renglón hijo
-                        id_padre = str(row.get('N° Nego', ''))
-                        if not id_padre.strip() or id_padre == 'nan': id_padre = generar_numero_negociacion(df_n)
+                        
+                        # PARCHE DE SEGURIDAD PARA CLIENTES VIEJOS
+                        id_padre = str(row.get('N° Nego', '')).strip()
+                        if not id_padre or id_padre == 'nan': 
+                            id_padre = generar_numero_negociacion(df_n)
+                            df_n.at[idx, 'N° Nego'] = id_padre # Le inyecta el ID retroactivamente al padre viejo
                         
                         new_r = pd.DataFrame([{
                             "N° Nego": id_padre, "Creado": f_h, "Cliente": row['Cliente'], "Empresa": row['Empresa'],
@@ -616,7 +631,6 @@ elif section == "Potenciales":
                     df_a.at[idx, 'Monto USD / $'] = m_f; df_a.at[idx, 'Link_PDF'] = n_l_p
                     df_a.at[idx, 'Productos Seleccionados'] = p_f; df_a.at[idx, 'Descuento Aplicado'] = d_f
                     if not str(df_a.at[idx, 'N° Cotiz.']).strip(): df_a.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_a)
-                    # Le asignamos el ID Padre al ascender a Nego
                     if not str(df_a.at[idx, 'N° Nego']).strip() or str(df_a.at[idx, 'N° Nego']) == 'nan': 
                         df_a.at[idx, 'N° Nego'] = generar_numero_negociacion(df_a)
                     guardar_datos(df_a); st.rerun()
@@ -643,8 +657,10 @@ elif section == "Pipeline":
             for idx, row in df_col.iterrows():
                 puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
                 
-                # Se incluye el ID de Nego en el Kanban
-                st.markdown(f"<div style='background:white; padding:12px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.15); margin-bottom:5px; border-left:4px solid {color_header}; color:black;'><b style='font-size:14px;'>{row.get('Cliente','')}</b><br><span style='font-size:11px; color:#FF6600; font-weight:bold;'>{row.get('N° Nego', 'S/N')}</span> | <span style='font-size:12px; color:#555;'>{row.get('Empresa','')}</span><br><b style='font-size:13px; color:#2261b6;'>{row.get('Monto USD / $','')}</b><br><span style='font-size:11px; color:#888;'>📅 {row.get('Proxima llamada','')}</span></div>", unsafe_allow_html=True)
+                nego_codigo = str(row.get('N° Nego', '')).strip()
+                if not nego_codigo or nego_codigo == 'nan': nego_codigo = "S/N"
+                
+                st.markdown(f"<div style='background:white; padding:12px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.15); margin-bottom:5px; border-left:4px solid {color_header}; color:black;'><b style='font-size:14px;'>{row.get('Cliente','')}</b><br><span style='font-size:11px; color:#FF6600; font-weight:bold;'>{nego_codigo}</span> | <span style='font-size:12px; color:#555;'>{row.get('Empresa','')}</span><br><b style='font-size:13px; color:#2261b6;'>{row.get('Monto USD / $','')}</b><br><span style='font-size:11px; color:#888;'>📅 {row.get('Proxima llamada','')}</span></div>", unsafe_allow_html=True)
                 
                 if puede:
                     opciones_mover = ["Mover a..."] + [e for e in estados_kanban if e != estado]
