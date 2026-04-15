@@ -132,7 +132,7 @@ def procesar_excel(row, obs, tipo_doc):
         etiqueta_impuesto = "Gastos adm. (5%)"
         impuesto_pct = 0.05
         
-    ws['E24'] = etiqueta_impuesto # Cambia el nombre dinámicamente
+    ws['E24'] = etiqueta_impuesto
 
     val_impuestos = monto_base * impuesto_pct
     total_final = monto_base + val_impuestos
@@ -243,7 +243,6 @@ def modulo_calculadora(key_prefix):
     if df_cat.empty:
         st.warning("⚠️ No hay productos en el catálogo."); return st.text_input("Monto", key=f"mm_{key_prefix}"), "", ""
     
-    # TRUCO DE LÍNEAS MÚLTIPLES: Permite elegir el mismo producto hasta 5 veces
     opciones_base = df_cat['Producto'].tolist()
     opciones_prods = []
     for p in opciones_base:
@@ -256,7 +255,6 @@ def modulo_calculadora(key_prefix):
     if seleccion:
         st.markdown("---")
         for i, s in enumerate(seleccion):
-            # Limpiar el nombre para buscarlo en el catálogo
             nombre_real = s.rsplit(' (Línea', 1)[0]
             fila_prod = df_cat[df_cat['Producto'] == nombre_real].iloc[0]
             precio_uni = limpiar_monto_para_suma(fila_prod['Precio'])
@@ -264,13 +262,11 @@ def modulo_calculadora(key_prefix):
             
             st.markdown(f"**📦 {nombre_real}** (Precio Unitario: {moneda_ref} {precio_uni:,.0f})")
             
-            # AGREGADO: Selector de Cantidad
             c_q, c_d1, c_d2, c_d3 = st.columns([1, 1.5, 1.5, 2])
             cantidad = c_q.number_input("Cantidad", min_value=1, value=1, key=f"cant_{key_prefix}_{i}")
             tipo_desc = c_d1.selectbox("Descuento en:", ["Porcentaje (%)", "Monto Fijo"], key=f"td_{key_prefix}_{i}")
             val_desc = c_d2.number_input("Valor Desc.", min_value=0.0, value=0.0, key=f"vd_{key_prefix}_{i}")
             
-            # MATEMÁTICA ACTUALIZADA CON CANTIDAD
             subtotal_linea = precio_uni * cantidad
             
             if "Porcentaje" in tipo_desc: 
@@ -423,16 +419,8 @@ elif section == "Negociaciones":
         # AGREGADO: Cartelito con fecha de próxima llamada
         badge_fecha = f"<br><span style='background:#6c757d;color:white;padding:4px 8px;border-radius:6px;font-size:11px;font-weight:bold; display:inline-block; margin-top:5px;'>📅 {prox_llamada}</span>" if str(prox_llamada).strip() else ""
         
-        html_card = f"""
-        <div style="background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black; overflow:hidden;">
-            <div style="float:right; text-align:right;">
-                <span style="background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold; display:inline-block;">{"✅" if est=="Ganada" else "❌" if est=="Perdida" else "⏳"} {est.upper()}</span>
-                {badge_fecha}
-            </div>
-            <b>Cliente:</b> {row.get("Cliente", "")} | <b>Cotiz:</b> {row.get("N° Cotiz.", "N/A")}<br>
-            <b>Monto Final:</b> <span style="color:#2261b6;font-weight:bold;font-size:16px;">{row.get("Monto USD / $", "")}</span>{desc_badge}{prod_badge}
-        </div>
-        """
+        # EL BLINDADO DE HTML PARA NEGOCIACIONES (Todo en una sola línea)
+        html_card = f"<div style='background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black; overflow:hidden;'><div style='float:right; text-align:right;'><span style='background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold; display:inline-block;'>{'✅' if est=='Ganada' else '❌' if est=='Perdida' else '⏳'} {est.upper()}</span>{badge_fecha}</div><b>Cliente:</b> {row.get('Cliente', '')} | <b>Cotiz:</b> {row.get('N° Cotiz.', 'N/A')}<br><b>Monto Final:</b> <span style='color:#2261b6;font-weight:bold;font-size:16px;'>{row.get('Monto USD / $', '')}</span>{desc_badge}{prod_badge}</div>"
         st.markdown(html_card, unsafe_allow_html=True)
         
         with st.expander("📞 ASISTENTE DE LLAMADA (Manejo de Objeciones de Cierre)", expanded=False):
@@ -588,14 +576,9 @@ elif section == "Pipeline":
             
             for idx, row in df_col.iterrows():
                 puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
-                st.markdown(f"""
-                <div style="background:white; padding:12px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.15); margin-bottom:5px; border-left:4px solid {color_header}; color:black;">
-                    <b style="font-size:14px;">{row.get('Cliente','')}</b><br>
-                    <span style="font-size:12px; color:#555;">{row.get('Empresa','')}</span><br>
-                    <b style="font-size:13px; color:#2261b6;">{row.get('Monto USD / $','')}</b><br>
-                    <span style="font-size:11px; color:#888;">📅 {row.get('Proxima llamada','')}</span>
-                </div>
-                """, unsafe_allow_html=True)
+                
+                # EL BLINDADO DE HTML PARA KANBAN (Todo en una sola línea)
+                st.markdown(f"<div style='background:white; padding:12px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.15); margin-bottom:5px; border-left:4px solid {color_header}; color:black;'><b style='font-size:14px;'>{row.get('Cliente','')}</b><br><span style='font-size:12px; color:#555;'>{row.get('Empresa','')}</span><br><b style='font-size:13px; color:#2261b6;'>{row.get('Monto USD / $','')}</b><br><span style='font-size:11px; color:#888;'>📅 {row.get('Proxima llamada','')}</span></div>", unsafe_allow_html=True)
                 
                 if puede:
                     opciones_mover = ["Mover a..."] + [e for e in estados_kanban if e != estado]
