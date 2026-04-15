@@ -110,9 +110,10 @@ def procesar_excel(row, obs, tipo_doc):
     for i, p in enumerate(prods_data):
         curr_row = fila_inicio + i
         
-        # ESCUDO ANTI-SUPERPOSICIÓN: Le inyecta espacios a las viñetas automáticamente
+        # ESCUDO ANTI-SUPERPOSICIÓN EXTREMO: 
+        # Cambiamos el punto por un guion con espacio duro para que Excel no active su "modo lista"
         desc_limpia = str(p.get('desc', ''))
-        desc_limpia = desc_limpia.replace('•', '•  ').replace('•   ', '•  ') # Fuerza un doble espacio
+        desc_limpia = desc_limpia.replace('•', '   -   ').replace('·', '   -   ')
         
         ws[f'A{curr_row}'] = p['nombre']
         ws[f'B{curr_row}'] = desc_limpia
