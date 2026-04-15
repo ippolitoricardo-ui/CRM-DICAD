@@ -34,7 +34,8 @@ CODIGOS_PAISES = [
     "🇹🇹 Trinidad y Tobago (+1)", "🇺🇾 Uruguay (+598)", "🇻🇪 Venezuela (+58)", "🌎 Otro"
 ]
 
-COLUMNS_MAIN = ["Cliente", "Profesion", "Direccion", "Pais", "Ciudad", "Estado /Prov.", "Empresa", "Cargo", "Telefono", "Email", "N° Cotiz.", "Monto USD / $", "Notas", "Proxima llamada", "Creado", "Asesor", "Estado_Nego", "Link_PDF", "Productos Seleccionados", "Descuento Aplicado"]
+# NUEVO: Se agrega "N° Nego" a la estructura principal
+COLUMNS_MAIN = ["N° Nego", "Cliente", "Profesion", "Direccion", "Pais", "Ciudad", "Estado /Prov.", "Empresa", "Cargo", "Telefono", "Email", "N° Cotiz.", "Monto USD / $", "Notas", "Proxima llamada", "Creado", "Asesor", "Estado_Nego", "Link_PDF", "Productos Seleccionados", "Descuento Aplicado"]
 COLUMNS_CAT = ["Producto", "Descripcion", "Categoria", "Moneda", "Precio"]
 
 def extraer_pais_codigo(seleccion):
@@ -191,6 +192,15 @@ def guardar_datos(df, sheet="Central Negociaciones"):
 def generar_numero_cotizacion(df):
     numeros = [int(''.join(filter(str.isdigit, str(val).split('.')[0]))) for val in df['N° Cotiz.'].dropna() if ''.join(filter(str.isdigit, str(val).split('.')[0]))]
     return f"{max(max(numeros) + 1 if numeros else 0, 1000):06d}"
+
+# NUEVO: Función para generar N° de Negociación único
+def generar_numero_negociacion(df):
+    if 'N° Nego' not in df.columns: return "NEG-1001"
+    numeros = []
+    for val in df['N° Nego'].dropna():
+        digits = ''.join(filter(str.isdigit, str(val)))
+        if digits: numeros.append(int(digits))
+    return f"NEG-{max(max(numeros) + 1 if numeros else 0, 1001):04d}"
 
 def guardar_gestion(indice, nota_existente, nueva_nota, nueva_fecha_str, fecha_anterior_str):
     df_actual = get_data_main(); fecha_hoy = datetime.now().strftime("%d/%m/%Y")
@@ -370,14 +380,22 @@ elif section == "Agregar Cliente":
                     est_i = "Potencial" if "Potencial" in tipo else "En Proceso"
                     cot_f = cot.strip() if cot.strip() else (generar_numero_cotizacion(df) if est_i == "En Proceso" else "")
                     fh_str = f"{px_l.strftime('%d/%m/%Y')} {px_h.strftime('%H:%M')}"
-                    new = pd.DataFrame([{"Creado":datetime.now().strftime("%d/%m/%Y"),"Cliente":cli,"Profesion":prof,"Pais":p_f,"Ciudad":ciu,"Empresa":emp,"Cargo":car,"Telefono":tel_f,"Email":eml,"N° Cotiz.":cot_f,"Monto USD / $":monto_final,"Notas":f"[{datetime.now().strftime('%d/%m/%Y')}] 📝 {n_i}" if n_i else "","Proxima llamada":fh_str,"Asesor":ase,"Estado_Nego":est_i,"Link_PDF":l_p, "Productos Seleccionados":prods_final, "Descuento Aplicado":desc_final}])
+                    nego_id = generar_numero_negociacion(df) # Asigna ID Padre
+                    
+                    new = pd.DataFrame([{
+                        "N° Nego": nego_id, "Creado": datetime.now().strftime("%d/%m/%Y"),
+                        "Cliente": cli, "Profesion": prof, "Pais": p_f, "Ciudad": ciu, "Empresa": emp,
+                        "Cargo": car, "Telefono": tel_f, "Email": eml, "N° Cotiz.": cot_f,
+                        "Monto USD / $": monto_final, "Notas": f"[{datetime.now().strftime('%d/%m/%Y')}] 📝 {n_i}" if n_i else "",
+                        "Proxima llamada": fh_str, "Asesor": ase, "Estado_Nego": est_i,
+                        "Link_PDF": l_p, "Productos Seleccionados": prods_final, "Descuento Aplicado": desc_final
+                    }])
                     guardar_datos(pd.concat([df, new], ignore_index=True)); st.session_state.f_k += 1; st.success("Guardado exitosamente!"); st.rerun()
 
 # --- NEGOCIACIONES ---
 elif section == "Negociaciones":
     st.markdown("## :card_index_dividers: Negociaciones Activas")
     
-    # Filtramos para que NO muestre las cotizaciones "Descartadas"
     df_nego = df[(df['Estado_Nego'] != 'Potencial') & (df['Estado_Nego'] != '') & (df['Estado_Nego'] != 'Descartada')]
 
     if st.session_state.usuario_actual == ADMINISTRADOR:
@@ -385,7 +403,7 @@ elif section == "Negociaciones":
         c1, c2, c3 = st.columns(3)
         c1.metric("💰 Total Empresa (USD)", f"USD {sum(limpiar_monto_para_suma(x) for x in df_nego['Monto USD / $'] if 'ARS' not in str(x).upper()):,.0f}")
         c2.metric("💵 Total Empresa (ARS)", f"ARS {sum(limpiar_monto_para_suma(x) for x in df_nego['Monto USD / $'] if 'ARS' in str(x).upper()):,.0f}")
-        c3.metric("🤝 Negociaciones Totales", len(df_nego))
+        c3.metric("🤝 Negociaciones Totales", len(df_nego['N° Nego'].unique())) # Cuenta negociaciones únicas, no cotizaciones
         st.markdown("---")
 
     asesor_sel = st.selectbox("Seleccionar Asesor:", lista_asesores, index=index_inicio)
@@ -402,6 +420,7 @@ elif section == "Negociaciones":
     for idx, row in df_f.iterrows():
         est = row.get('Estado_Nego', 'En Proceso'); color = "#28a745" if est == 'Ganada' else "#dc3545" if est == 'Perdida' else "#ffc107"
         prox_llamada = row.get('Proxima llamada', '')
+        nego_codigo = row.get('N° Nego', 'S/N')
         
         try:
             prods_json = json.loads(row.get('Productos Seleccionados', '[]'))
@@ -411,10 +430,10 @@ elif section == "Negociaciones":
         
         prod_badge = f"<br><small style='color:#555;'>📦 <b>Incluye:</b> {texto_prods}</small>" if texto_prods else ""
         desc_badge = f" | <small style='color:#dc3545;'>{row.get('Descuento Aplicado', '')}</small>" if row.get('Descuento Aplicado') and row.get('Descuento Aplicado') != "Sin descuento" else ""
-        
         badge_fecha = f"<br><span style='background:#6c757d;color:white;padding:4px 8px;border-radius:6px;font-size:11px;font-weight:bold; display:inline-block; margin-top:5px;'>📅 {prox_llamada}</span>" if str(prox_llamada).strip() else ""
         
-        html_card = f"<div style='background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black; overflow:hidden;'><div style='float:right; text-align:right;'><span style='background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold; display:inline-block;'>{'✅' if est=='Ganada' else '❌' if est=='Perdida' else '⏳'} {est.upper()}</span>{badge_fecha}</div><b>Cliente:</b> {row.get('Cliente', '')} | <b>Cotiz:</b> {row.get('N° Cotiz.', 'N/A')}<br><b>Monto Final:</b> <span style='color:#2261b6;font-weight:bold;font-size:16px;'>{row.get('Monto USD / $', '')}</span>{desc_badge}{prod_badge}</div>"
+        # Tarjeta actualizada con ID de Negociación destacado
+        html_card = f"<div style='background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black; overflow:hidden;'><div style='float:right; text-align:right;'><span style='background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold; display:inline-block;'>{'✅' if est=='Ganada' else '❌' if est=='Perdida' else '⏳'} {est.upper()}</span>{badge_fecha}</div><b>Nego:</b> <span style='color:#FF6600;font-weight:bold;'>{nego_codigo}</span> | <b>Cliente:</b> {row.get('Cliente', '')} | <b>Cotiz:</b> {row.get('N° Cotiz.', 'N/A')}<br><b>Monto Final:</b> <span style='color:#2261b6;font-weight:bold;font-size:16px;'>{row.get('Monto USD / $', '')}</span>{desc_badge}{prod_badge}</div>"
         st.markdown(html_card, unsafe_allow_html=True)
         
         with st.expander("📞 ASISTENTE DE LLAMADA (Manejo de Objeciones de Cierre)", expanded=False):
@@ -469,9 +488,8 @@ elif section == "Negociaciones":
             if row.get('Link_PDF'): st.link_button("📄 Ver Presupuesto Subido (Nube)", row['Link_PDF'], use_container_width=True)
 
             if puede:
-                # --- NUEVA LÓGICA: MÚLTIPLES COTIZACIONES ---
                 st.markdown("---"); st.markdown("### 🔄 Gestión de Cotizaciones (Alternativas y Ajustes)")
-                st.info("Podés sobrescribir esta cotización si hubo un error, o crear una 'Alternativa' para ofrecerle 2 opciones distintas al cliente al mismo tiempo.")
+                st.info("Podés sobrescribir esta cotización si hubo un error, o crear una 'Alternativa' para ofrecerle 2 opciones distintas al cliente bajo la misma negociación.")
                 m_f, p_f, d_f = modulo_calculadora(f"nc_{idx}")
                 c_nc1, c_nc2 = st.columns(2)
                 with c_nc1: ncc = st.text_input("N° Cotiz (Vacío=Auto)", key=f"ncc_{idx}")
@@ -495,8 +513,12 @@ elif section == "Negociaciones":
                         df_n = get_data_main()
                         f_h = datetime.now().strftime("%d/%m/%Y")
                         num_c = ncc if ncc else generar_numero_cotizacion(df_n)
+                        # Clona la negociación pero crea un renglón hijo
+                        id_padre = str(row.get('N° Nego', ''))
+                        if not id_padre.strip() or id_padre == 'nan': id_padre = generar_numero_negociacion(df_n)
+                        
                         new_r = pd.DataFrame([{
-                            "Creado": f_h, "Cliente": row['Cliente'], "Empresa": row['Empresa'],
+                            "N° Nego": id_padre, "Creado": f_h, "Cliente": row['Cliente'], "Empresa": row['Empresa'],
                             "Profesion": row['Profesion'], "Cargo": row['Cargo'], "Pais": row['Pais'],
                             "Ciudad": row['Ciudad'], "Telefono": row['Telefono'], "Email": row['Email'],
                             "N° Cotiz.": num_c, "Monto USD / $": m_f, "Asesor": row['Asesor'],
@@ -511,7 +533,7 @@ elif section == "Negociaciones":
                         df_n = get_data_main()
                         f_h = datetime.now().strftime("%d/%m/%Y")
                         df_n.at[idx, 'Estado_Nego'] = "Descartada"
-                        df_n.at[idx, 'Notas'] = str(df_n.at[idx, 'Notas']) + f"\n[{f_h}] 🗑️ Cotización rechazada/anulada. (Otras alternativas pueden seguir activas)."
+                        df_n.at[idx, 'Notas'] = str(df_n.at[idx, 'Notas']) + f"\n[{f_h}] 🗑️ Cotización rechazada/anulada."
                         guardar_datos(df_n); st.rerun()
 
             st.markdown("---"); st.markdown("**📝 Seguimiento y Gestión:**"); st.caption(row.get('Notas',''))
@@ -589,10 +611,14 @@ elif section == "Potenciales":
                 m_f, p_f, d_f = modulo_calculadora(f"prov_{idx}")
                 n_l_p = st.text_input("Link PDF (Opcional)", key=f"pl_{idx}")
                 if st.button("🚀 Guardar Cotización y Promover", type="primary"):
-                    df_a = get_data_main(); df_a.at[idx, 'Estado_Nego'] = "En Proceso"
+                    df_a = get_data_main()
+                    df_a.at[idx, 'Estado_Nego'] = "En Proceso"
                     df_a.at[idx, 'Monto USD / $'] = m_f; df_a.at[idx, 'Link_PDF'] = n_l_p
                     df_a.at[idx, 'Productos Seleccionados'] = p_f; df_a.at[idx, 'Descuento Aplicado'] = d_f
                     if not str(df_a.at[idx, 'N° Cotiz.']).strip(): df_a.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_a)
+                    # Le asignamos el ID Padre al ascender a Nego
+                    if not str(df_a.at[idx, 'N° Nego']).strip() or str(df_a.at[idx, 'N° Nego']) == 'nan': 
+                        df_a.at[idx, 'N° Nego'] = generar_numero_negociacion(df_a)
                     guardar_datos(df_a); st.rerun()
 
 # --- PIPELINE KANBAN ---
@@ -617,7 +643,8 @@ elif section == "Pipeline":
             for idx, row in df_col.iterrows():
                 puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
                 
-                st.markdown(f"<div style='background:white; padding:12px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.15); margin-bottom:5px; border-left:4px solid {color_header}; color:black;'><b style='font-size:14px;'>{row.get('Cliente','')}</b><br><span style='font-size:12px; color:#555;'>{row.get('Empresa','')}</span><br><b style='font-size:13px; color:#2261b6;'>{row.get('Monto USD / $','')}</b><br><span style='font-size:11px; color:#888;'>📅 {row.get('Proxima llamada','')}</span></div>", unsafe_allow_html=True)
+                # Se incluye el ID de Nego en el Kanban
+                st.markdown(f"<div style='background:white; padding:12px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.15); margin-bottom:5px; border-left:4px solid {color_header}; color:black;'><b style='font-size:14px;'>{row.get('Cliente','')}</b><br><span style='font-size:11px; color:#FF6600; font-weight:bold;'>{row.get('N° Nego', 'S/N')}</span> | <span style='font-size:12px; color:#555;'>{row.get('Empresa','')}</span><br><b style='font-size:13px; color:#2261b6;'>{row.get('Monto USD / $','')}</b><br><span style='font-size:11px; color:#888;'>📅 {row.get('Proxima llamada','')}</span></div>", unsafe_allow_html=True)
                 
                 if puede:
                     opciones_mover = ["Mover a..."] + [e for e in estados_kanban if e != estado]
@@ -638,7 +665,6 @@ elif section == "Calendario":
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 Actualizar", use_container_width=True): st.cache_data.clear(); st.rerun()
     
-    # Filtramos para que NO muestre los que tienen la fecha vacía (llamadas realizadas)
     df_a = df[df['Estado_Nego'].isin(['En Proceso', 'Potencial']) & (df['Proxima llamada'].astype(str).str.strip() != '')].copy()
     
     if df_a.empty: st.success("Todo al día. No hay llamadas pendientes.")
