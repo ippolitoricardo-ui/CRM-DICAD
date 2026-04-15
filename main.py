@@ -109,8 +109,13 @@ def procesar_excel(row, obs, tipo_doc):
     fila_inicio = 18
     for i, p in enumerate(prods_data):
         curr_row = fila_inicio + i
+        
+        # ESCUDO ANTI-SUPERPOSICIÓN: Le inyecta espacios a las viñetas automáticamente
+        desc_limpia = str(p.get('desc', ''))
+        desc_limpia = desc_limpia.replace('•', '•  ').replace('•   ', '•  ') # Fuerza un doble espacio
+        
         ws[f'A{curr_row}'] = p['nombre']
-        ws[f'B{curr_row}'] = p.get('desc', '')
+        ws[f'B{curr_row}'] = desc_limpia
         ws[f'C{curr_row}'] = p['cantidad']
         ws[f'D{curr_row}'] = p['precio']
         ws[f'E{curr_row}'] = p['desc_val']
@@ -420,7 +425,6 @@ elif section == "Negociaciones":
         
         badge_fecha = f"<br><span style='background:#6c757d;color:white;padding:4px 8px;border-radius:6px;font-size:11px;font-weight:bold; display:inline-block; margin-top:5px;'>📅 {prox_llamada}</span>" if str(prox_llamada).strip() else ""
         
-        # BLINDADO HTML (Una sola línea)
         html_card = f"<div style='background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black; overflow:hidden;'><div style='float:right; text-align:right;'><span style='background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold; display:inline-block;'>{'✅' if est=='Ganada' else '❌' if est=='Perdida' else '⏳'} {est.upper()}</span>{badge_fecha}</div><b>Cliente:</b> {row.get('Cliente', '')} | <b>Cotiz:</b> {row.get('N° Cotiz.', 'N/A')}<br><b>Monto Final:</b> <span style='color:#2261b6;font-weight:bold;font-size:16px;'>{row.get('Monto USD / $', '')}</span>{desc_badge}{prod_badge}</div>"
         st.markdown(html_card, unsafe_allow_html=True)
         
@@ -578,7 +582,6 @@ elif section == "Pipeline":
             for idx, row in df_col.iterrows():
                 puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
                 
-                # BLINDADO HTML (Una sola línea)
                 st.markdown(f"<div style='background:white; padding:12px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.15); margin-bottom:5px; border-left:4px solid {color_header}; color:black;'><b style='font-size:14px;'>{row.get('Cliente','')}</b><br><span style='font-size:12px; color:#555;'>{row.get('Empresa','')}</span><br><b style='font-size:13px; color:#2261b6;'>{row.get('Monto USD / $','')}</b><br><span style='font-size:11px; color:#888;'>📅 {row.get('Proxima llamada','')}</span></div>", unsafe_allow_html=True)
                 
                 if puede:
