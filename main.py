@@ -122,9 +122,18 @@ def procesar_excel(row, obs, tipo_doc):
             ws[f'{col}{curr_row}'].fill = relleno
             ws[f'{col}{curr_row}'].alignment = Alignment(vertical="top", wrap_text=True)
 
-    # Inyección de Totales y Matemáticas
+    # Inyección de Totales y Matemáticas con Lógica Camaleón
     monto_base = limpiar_monto_para_suma(row['Monto USD / $'])
-    impuesto_pct = 0.21 if "Argentina" in tipo_doc else 0.05
+    
+    if "Argentina" in tipo_doc:
+        etiqueta_impuesto = "IVA (21%)"
+        impuesto_pct = 0.21
+    else:
+        etiqueta_impuesto = "Gastos adm. (5%)"
+        impuesto_pct = 0.05
+        
+    ws['E24'] = etiqueta_impuesto # Cambia el nombre dinámicamente
+
     val_impuestos = monto_base * impuesto_pct
     total_final = monto_base + val_impuestos
 
@@ -135,12 +144,13 @@ def procesar_excel(row, obs, tipo_doc):
 
     # Inyección de Observaciones
     ws['A31'] = f"Observaciones: {obs}"
+    
     # Forzar configuración de impresión a 1 sola página
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.page_setup.fitToHeight = 1
     ws.page_setup.fitToWidth = 1
 
-    # NUEVO: Achicar márgenes para que la tabla escale más grande
+    # Achicar márgenes para que la tabla escale más grande
     ws.page_margins.left = 0.2
     ws.page_margins.right = 0.2
     ws.page_margins.top = 0.4
