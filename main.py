@@ -95,7 +95,6 @@ def procesar_excel(row, obs, tipo_doc):
             "importe": row['Monto USD / $']
         }]
 
-    # Inyección de Cabecera
     ws['B10'] = row['Cliente']
     ws['B11'] = row['Empresa']
     ws['B12'] = row['Telefono']
@@ -105,7 +104,6 @@ def procesar_excel(row, obs, tipo_doc):
     ws['C15'] = row['N° Cotiz.']
     ws['D15'] = "USD" if "USD" in str(row['Monto USD / $']).upper() else "ARS"
 
-    # Inyección de Productos
     fila_inicio = 18
     for i, p in enumerate(prods_data):
         curr_row = fila_inicio + i
@@ -124,7 +122,6 @@ def procesar_excel(row, obs, tipo_doc):
             ws[f'{col}{curr_row}'].fill = relleno
             ws[f'{col}{curr_row}'].alignment = Alignment(vertical="top", wrap_text=True)
 
-    # Inyección de Totales y Matemáticas
     monto_base = limpiar_monto_para_suma(row['Monto USD / $'])
     descuento_total = limpiar_monto_para_suma(row.get('Descuento Aplicado', '0'))
     subtotal_bruto = monto_base + descuento_total
@@ -146,7 +143,6 @@ def procesar_excel(row, obs, tipo_doc):
     ws['F24'] = val_impuestos
     ws['F25'] = total_final
 
-    # Inyección de Observaciones
     ws['A31'] = f"Observaciones: {obs}"
     
     ws.sheet_properties.pageSetUpPr.fitToPage = True
@@ -380,7 +376,9 @@ elif section == "Agregar Cliente":
 # --- NEGOCIACIONES ---
 elif section == "Negociaciones":
     st.markdown("## :card_index_dividers: Negociaciones Activas")
-    df_nego = df[(df['Estado_Nego'] != 'Potencial') & (df['Estado_Nego'] != '')]
+    
+    # Filtramos para que NO muestre las cotizaciones "Descartadas"
+    df_nego = df[(df['Estado_Nego'] != 'Potencial') & (df['Estado_Nego'] != '') & (df['Estado_Nego'] != 'Descartada')]
 
     if st.session_state.usuario_actual == ADMINISTRADOR:
         st.markdown("### 🏢 PANEL ESTRATÉGICO (Admin)")
@@ -429,7 +427,6 @@ elif section == "Negociaciones":
             puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
             
             if puede:
-                # --- NUEVO MOTOR DE DOCUMENTOS EXCEL ---
                 st.markdown("### 📄 Generar Presupuesto Excel")
                 c_wd1, c_wd2 = st.columns([2, 1])
                 with c_wd1: obs_excel = st.text_area("Observaciones para el cliente:", key=f"obs_e_{idx}")
@@ -472,37 +469,49 @@ elif section == "Negociaciones":
             if row.get('Link_PDF'): st.link_button("📄 Ver Presupuesto Subido (Nube)", row['Link_PDF'], use_container_width=True)
 
             if puede:
-                # --- NUEVA LÓGICA: ACTUALIZAR COTIZACIÓN EN LA MISMA NEGOCIACIÓN ---
-                st.markdown("---"); st.markdown("### 🔄 Generar Nueva Cotización (Misma Negociación)")
-                st.info("Al crear una cotización nueva, se reemplazará el monto y productos de la cotización actual, pero la negociación y el historial seguirán intactos.")
+                # --- NUEVA LÓGICA: MÚLTIPLES COTIZACIONES ---
+                st.markdown("---"); st.markdown("### 🔄 Gestión de Cotizaciones (Alternativas y Ajustes)")
+                st.info("Podés sobrescribir esta cotización si hubo un error, o crear una 'Alternativa' para ofrecerle 2 opciones distintas al cliente al mismo tiempo.")
                 m_f, p_f, d_f = modulo_calculadora(f"nc_{idx}")
                 c_nc1, c_nc2 = st.columns(2)
                 with c_nc1: ncc = st.text_input("N° Cotiz (Vacío=Auto)", key=f"ncc_{idx}")
                 with c_nc2: ncp = st.text_input("Link al PDF en la nube (Opcional)", key=f"ncp_{idx}")
                 
-                col_btn1, col_btn2 = st.columns(2)
+                col_btn1, col_btn2, col_btn3 = st.columns(3)
                 with col_btn1:
-                    if st.button("🚀 Actualizar Cotización en Nego", key=f"bnc_{idx}", type="primary", use_container_width=True):
+                    if st.button("🔄 Sobrescribir Actual", key=f"bnc_upd_{idx}", type="primary", use_container_width=True):
+                        df_n = get_data_main()
+                        f_h = datetime.now().strftime("%d/%m/%Y")
+                        num_c = ncc if ncc else df_n.at[idx, 'N° Cotiz.']
+                        df_n.at[idx, 'N° Cotiz.'] = num_c
+                        df_n.at[idx, 'Monto USD / $'] = m_f
+                        df_n.at[idx, 'Link_PDF'] = ncp if ncp else df_n.at[idx, 'Link_PDF']
+                        df_n.at[idx, 'Productos Seleccionados'] = p_f
+                        df_n.at[idx, 'Descuento Aplicado'] = d_f
+                        df_n.at[idx, 'Notas'] = str(df_n.at[idx, 'Notas']) + f"\n[{f_h}] 🔄 Cotización actualizada a {m_f}."
+                        guardar_datos(df_n); st.rerun()
+                with col_btn2:
+                    if st.button("➕ Crear Alternativa (Nueva)", key=f"bnc_alt_{idx}", use_container_width=True):
                         df_n = get_data_main()
                         f_h = datetime.now().strftime("%d/%m/%Y")
                         num_c = ncc if ncc else generar_numero_cotizacion(df_n)
-                        nota_previa = str(df_n.at[idx, 'Notas'])
-                        
-                        df_n.at[idx, 'N° Cotiz.'] = num_c
-                        df_n.at[idx, 'Monto USD / $'] = m_f
-                        df_n.at[idx, 'Link_PDF'] = ncp
-                        df_n.at[idx, 'Productos Seleccionados'] = p_f
-                        df_n.at[idx, 'Descuento Aplicado'] = d_f
-                        df_n.at[idx, 'Notas'] = nota_previa + f"\n[{f_h}] 🔄 Nueva Cotización {num_c} generada por {m_f}."
-                        guardar_datos(df_n); st.rerun()
-                with col_btn2:
-                    if st.button("🗑️ Descartar Cotiz. Actual (Sigue en Nego)", key=f"desc_{idx}", use_container_width=True):
+                        new_r = pd.DataFrame([{
+                            "Creado": f_h, "Cliente": row['Cliente'], "Empresa": row['Empresa'],
+                            "Profesion": row['Profesion'], "Cargo": row['Cargo'], "Pais": row['Pais'],
+                            "Ciudad": row['Ciudad'], "Telefono": row['Telefono'], "Email": row['Email'],
+                            "N° Cotiz.": num_c, "Monto USD / $": m_f, "Asesor": row['Asesor'],
+                            "Estado_Nego": "En Proceso", "Link_PDF": ncp,
+                            "Productos Seleccionados": p_f, "Descuento Aplicado": d_f,
+                            "Notas": str(row.get('Notas','')) + f"\n[{f_h}] ➕ Cotización alternativa creada por {m_f}.",
+                            "Proxima llamada": row.get('Proxima llamada', '')
+                        }])
+                        guardar_datos(pd.concat([df_n, new_r], ignore_index=True)); st.rerun()
+                with col_btn3:
+                    if st.button("🗑️ Anular esta Opción", key=f"desc_{idx}", use_container_width=True):
                         df_n = get_data_main()
                         f_h = datetime.now().strftime("%d/%m/%Y")
-                        nota_previa = str(df_n.at[idx, 'Notas'])
-                        df_n.at[idx, 'N° Cotiz.'] = "Rechazada"
-                        df_n.at[idx, 'Monto USD / $'] = "0"
-                        df_n.at[idx, 'Notas'] = nota_previa + f"\n[{f_h}] 📉 Cotización anterior descartada por el cliente. Negociación sigue abierta."
+                        df_n.at[idx, 'Estado_Nego'] = "Descartada"
+                        df_n.at[idx, 'Notas'] = str(df_n.at[idx, 'Notas']) + f"\n[{f_h}] 🗑️ Cotización rechazada/anulada. (Otras alternativas pueden seguir activas)."
                         guardar_datos(df_n); st.rerun()
 
             st.markdown("---"); st.markdown("**📝 Seguimiento y Gestión:**"); st.caption(row.get('Notas',''))
