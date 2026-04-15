@@ -71,7 +71,7 @@ def generar_link_gcal(cliente, empresa, telefono, fecha_str):
         return f"https://calendar.google.com/calendar/render?action=TEMPLATE&text={titulo}&details={detalles}&dates={start_str}/{end_str}"
     except: return ""
 
-# --- MOTOR DE DOCUMENTOS EXCEL (REEMPLAZA A WORD) ---
+# --- MOTOR DE DOCUMENTOS EXCEL ---
 FILL_GRIS = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
 FILL_BLANCO = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
 
@@ -243,7 +243,12 @@ def modulo_calculadora(key_prefix):
     if df_cat.empty:
         st.warning("⚠️ No hay productos en el catálogo."); return st.text_input("Monto", key=f"mm_{key_prefix}"), "", ""
     
-    opciones_prods = df_cat['Producto'].tolist()
+    # TRUCO DE LÍNEAS MÚLTIPLES: Permite elegir el mismo producto hasta 5 veces
+    opciones_base = df_cat['Producto'].tolist()
+    opciones_prods = []
+    for p in opciones_base:
+        opciones_prods.extend([f"{p} (Línea 1)", f"{p} (Línea 2)", f"{p} (Línea 3)", f"{p} (Línea 4)", f"{p} (Línea 5)"])
+    
     seleccion = st.multiselect("Seleccioná los softwares a cotizar:", opciones_prods, key=f"sel_{key_prefix}")
     
     subtotal_general = 0.0; total_final = 0.0; ahorro_total = 0.0; moneda_ref = "USD"; json_data = []
@@ -251,28 +256,42 @@ def modulo_calculadora(key_prefix):
     if seleccion:
         st.markdown("---")
         for i, s in enumerate(seleccion):
-            fila_prod = df_cat[df_cat['Producto'] == s].iloc[0]
-            precio_val = limpiar_monto_para_suma(fila_prod['Precio'])
+            # Limpiar el nombre para buscarlo en el catálogo
+            nombre_real = s.rsplit(' (Línea', 1)[0]
+            fila_prod = df_cat[df_cat['Producto'] == nombre_real].iloc[0]
+            precio_uni = limpiar_monto_para_suma(fila_prod['Precio'])
             if fila_prod['Moneda']: moneda_ref = str(fila_prod['Moneda']).upper().strip()
             
-            st.markdown(f"**📦 {s}** (Lista: {moneda_ref} {precio_val:,.0f})")
-            c_d1, c_d2, c_d3 = st.columns([1.5, 1.5, 2])
+            st.markdown(f"**📦 {nombre_real}** (Precio Unitario: {moneda_ref} {precio_uni:,.0f})")
+            
+            # AGREGADO: Selector de Cantidad
+            c_q, c_d1, c_d2, c_d3 = st.columns([1, 1.5, 1.5, 2])
+            cantidad = c_q.number_input("Cantidad", min_value=1, value=1, key=f"cant_{key_prefix}_{i}")
             tipo_desc = c_d1.selectbox("Descuento en:", ["Porcentaje (%)", "Monto Fijo"], key=f"td_{key_prefix}_{i}")
-            val_desc = c_d2.number_input("Valor", min_value=0.0, value=0.0, key=f"vd_{key_prefix}_{i}")
+            val_desc = c_d2.number_input("Valor Desc.", min_value=0.0, value=0.0, key=f"vd_{key_prefix}_{i}")
             
-            if "Porcentaje" in tipo_desc: monto_desc = precio_val * (val_desc / 100); txt_desc = f"{val_desc}%"
-            else: monto_desc = val_desc; txt_desc = f"{moneda_ref} {val_desc}"
+            # MATEMÁTICA ACTUALIZADA CON CANTIDAD
+            subtotal_linea = precio_uni * cantidad
+            
+            if "Porcentaje" in tipo_desc: 
+                monto_desc = subtotal_linea * (val_desc / 100)
+                txt_desc = f"{val_desc}%"
+            else: 
+                monto_desc = val_desc
+                txt_desc = f"{moneda_ref} {val_desc}"
                 
-            precio_final_prod = precio_val - monto_desc
-            c_d3.markdown(f"<div style='margin-top:28px; font-weight:bold; color:#28a745; font-size:15px;'>👉 Queda en: {moneda_ref} {precio_final_prod:,.0f}</div>", unsafe_allow_html=True)
+            precio_final_prod = subtotal_linea - monto_desc
+            c_d3.markdown(f"<div style='margin-top:28px; font-weight:bold; color:#28a745; font-size:15px;'>👉 Total Línea: {moneda_ref} {precio_final_prod:,.0f}</div>", unsafe_allow_html=True)
             
-            subtotal_general += precio_val; total_final += precio_final_prod; ahorro_total += monto_desc
+            subtotal_general += subtotal_linea
+            total_final += precio_final_prod
+            ahorro_total += monto_desc
             
             json_data.append({
-                "nombre": s, "desc": fila_prod['Descripcion'], "cantidad": "1 pcs.",
-                "precio": f"{moneda_ref} {precio_val:,.0f}", "desc_val": txt_desc,
+                "nombre": nombre_real, "desc": fila_prod['Descripcion'], "cantidad": f"{cantidad} pcs.",
+                "precio": f"{moneda_ref} {precio_uni:,.0f}", "desc_val": txt_desc,
                 "importe": f"{moneda_ref} {precio_final_prod:,.0f}",
-                "raw_precio": precio_val, "raw_importe": precio_final_prod
+                "raw_precio": precio_uni, "raw_importe": precio_final_prod
             })
             st.markdown("<hr style='margin:10px 0; border: 0; border-top: 1px dashed #ccc;'>", unsafe_allow_html=True)
             
@@ -390,6 +409,7 @@ elif section == "Negociaciones":
 
     for idx, row in df_f.iterrows():
         est = row.get('Estado_Nego', 'En Proceso'); color = "#28a745" if est == 'Ganada' else "#dc3545" if est == 'Perdida' else "#ffc107"
+        prox_llamada = row.get('Proxima llamada', '')
         
         try:
             prods_json = json.loads(row.get('Productos Seleccionados', '[]'))
@@ -400,7 +420,20 @@ elif section == "Negociaciones":
         prod_badge = f"<br><small style='color:#555;'>📦 <b>Incluye:</b> {texto_prods}</small>" if texto_prods else ""
         desc_badge = f" | <small style='color:#dc3545;'>{row.get('Descuento Aplicado', '')}</small>" if row.get('Descuento Aplicado') and row.get('Descuento Aplicado') != "Sin descuento" else ""
         
-        st.markdown(f'<div style="background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black;"><span style="float:right;background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold;">{"✅" if est=="Ganada" else "❌" if est=="Perdida" else "⏳"} {est.upper()}</span><b>Cliente:</b> {row.get("Cliente", "")} | <b>Cotiz:</b> {row.get("N° Cotiz.", "N/A")}<br><b>Monto Final:</b> <span style="color:#2261b6;font-weight:bold;font-size:16px;">{row.get("Monto USD / $", "")}</span>{desc_badge}{prod_badge}</div>', unsafe_allow_html=True)
+        # AGREGADO: Cartelito con fecha de próxima llamada
+        badge_fecha = f"<br><span style='background:#6c757d;color:white;padding:4px 8px;border-radius:6px;font-size:11px;font-weight:bold; display:inline-block; margin-top:5px;'>📅 {prox_llamada}</span>" if str(prox_llamada).strip() else ""
+        
+        html_card = f"""
+        <div style="background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black; overflow:hidden;">
+            <div style="float:right; text-align:right;">
+                <span style="background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold; display:inline-block;">{"✅" if est=="Ganada" else "❌" if est=="Perdida" else "⏳"} {est.upper()}</span>
+                {badge_fecha}
+            </div>
+            <b>Cliente:</b> {row.get("Cliente", "")} | <b>Cotiz:</b> {row.get("N° Cotiz.", "N/A")}<br>
+            <b>Monto Final:</b> <span style="color:#2261b6;font-weight:bold;font-size:16px;">{row.get("Monto USD / $", "")}</span>{desc_badge}{prod_badge}
+        </div>
+        """
+        st.markdown(html_card, unsafe_allow_html=True)
         
         with st.expander("📞 ASISTENTE DE LLAMADA (Manejo de Objeciones de Cierre)", expanded=False):
             st.warning("🎯 **Modo Cierre Activado:** Aislá la objeción antes de responder o ceder precio.")
