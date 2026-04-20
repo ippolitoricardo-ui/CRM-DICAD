@@ -625,7 +625,9 @@ elif section == "Potenciales":
                 st.markdown("### 🚀 Promover a Negociación")
                 m_f, p_f, d_f = modulo_calculadora(f"prov_{idx}")
                 n_l_p = st.text_input("Link PDF (Opcional)", key=f"pl_{idx}")
-                if st.button("🚀 Guardar Cotización y Promover", type="primary"):
+                
+                # ACÁ ESTABA EL ERROR: Agregado el key="btn_promover_{idx}"
+                if st.button("🚀 Guardar Cotización y Promover", type="primary", key=f"btn_promover_{idx}"):
                     df_a = get_data_main()
                     df_a.at[idx, 'Estado_Nego'] = "En Proceso"
                     df_a.at[idx, 'Monto USD / $'] = m_f; df_a.at[idx, 'Link_PDF'] = n_l_p
