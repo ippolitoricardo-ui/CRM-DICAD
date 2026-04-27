@@ -352,6 +352,32 @@ elif section == "Agregar Cliente":
         tel = st.text_input("Teléfono (Sin código)", key=f"te_{fk}"); eml = st.text_input("Email", key=f"em_{fk}")
     
     st.markdown("---")
+    
+    # --- ESCÁNER EN TIEMPO REAL ANTI-DUPLICADOS ---
+    p_f, c_f = extraer_pais_codigo(p_s)
+    tel_f = f"{c_f} {tel}" if (tel.strip() and not tel.startswith("+") and c_f) else tel
+    em_l = eml.strip().lower()
+    te_l = tel_f.replace(" ","").replace("+","").replace("-","")
+    
+    if em_l != "" or tel.strip() != "":
+        duplicado_rt = False
+        msg_dup_rt = ""
+        for _, r in df.iterrows():
+            exist_em = str(r['Email']).lower().strip()
+            exist_te = str(r['Telefono']).replace(" ","").replace("+","").replace("-","")
+            if em_l and exist_em == em_l:
+                duplicado_rt = True
+                msg_dup_rt = f"el email '{eml}'"
+                break
+            if te_l and exist_te == te_l:
+                duplicado_rt = True
+                msg_dup_rt = f"el teléfono '{tel_f}'"
+                break
+                
+        if duplicado_rt:
+            st.warning(f"⚠️ **Atención:** Es posible que este contacto ya esté cargado. Coincide {msg_dup_rt}. Por favor, buscalo en Negociaciones/Potenciales antes de duplicarlo.")
+    # ----------------------------------------------
+
     cc1, cc2, cc3 = st.columns([2, 2, 2])
     with cc1: px_l = st.date_input("Próxima llamada", key=f"px_{fk}")
     with cc2: px_h = st.time_input("Hora de llamada", value=datetime.strptime("10:00", "%H:%M").time(), key=f"pxh_{fk}")
@@ -372,10 +398,22 @@ elif section == "Agregar Cliente":
         if not cli.strip(): st.warning("El nombre del cliente es obligatorio.")
         else:
             with st.spinner("Guardando..."):
-                p_f, c_f = extraer_pais_codigo(p_s)
-                tel_f = f"{c_f} {tel}" if (tel.strip() and not tel.startswith("+") and c_f) else tel
-                em_l, te_l = eml.strip().lower(), tel_f.replace(" ","").replace("+","").replace("-","")
-                if any((str(r['Email']).lower().strip() == em_l and em_l) or (str(r['Telefono']).replace(" ","").replace("+","").replace("-","") == te_l and te_l) for _, r in df.iterrows()): st.error("🚨 ¡CLIENTE EXISTENTE! Usá 'Nueva Cotización' en la ficha del cliente.")
+                duplicado = False
+                msg_dup = ""
+                for _, r in df.iterrows():
+                    exist_em = str(r['Email']).lower().strip()
+                    exist_te = str(r['Telefono']).replace(" ","").replace("+","").replace("-","")
+                    if em_l and exist_em == em_l:
+                        duplicado = True
+                        msg_dup = f"el email '{eml}'"
+                        break
+                    if te_l and exist_te == te_l:
+                        duplicado = True
+                        msg_dup = f"el teléfono '{tel_f}'"
+                        break
+                
+                if duplicado: 
+                    st.error(f"🚨 ¡CLIENTE EXISTENTE! Ya tenés un contacto registrado con {msg_dup}. Buscalo en el CRM para agregarle una cotización en lugar de crearlo de nuevo.")
                 else:
                     est_i = "Potencial" if "Potencial" in tipo else "En Proceso"
                     cot_f = cot.strip() if cot.strip() else (generar_numero_cotizacion(df) if est_i == "En Proceso" else "")
@@ -404,7 +442,6 @@ elif section == "Negociaciones":
         c1.metric("💰 Total Empresa (USD)", f"USD {sum(limpiar_monto_para_suma(x) for x in df_nego['Monto USD / $'] if 'ARS' not in str(x).upper()):,.0f}")
         c2.metric("💵 Total Empresa (ARS)", f"ARS {sum(limpiar_monto_para_suma(x) for x in df_nego['Monto USD / $'] if 'ARS' in str(x).upper()):,.0f}")
         
-        # Filtramos 'nan' y vacíos para que no los cuente mal
         negos_validas = [n for n in df_nego['N° Nego'].unique() if str(n).strip() and str(n) != 'nan']
         c3.metric("🤝 Negociaciones Totales", len(negos_validas))
         st.markdown("---")
@@ -424,7 +461,6 @@ elif section == "Negociaciones":
         est = row.get('Estado_Nego', 'En Proceso'); color = "#28a745" if est == 'Ganada' else "#dc3545" if est == 'Perdida' else "#ffc107"
         prox_llamada = row.get('Proxima llamada', '')
         
-        # FIX PARA CLIENTES VIEJOS: Si no tiene N° Nego, mostramos "S/N" visualmente.
         nego_codigo = str(row.get('N° Nego', '')).strip()
         if not nego_codigo or nego_codigo == 'nan': 
             nego_codigo = "S/N"
@@ -508,7 +544,6 @@ elif section == "Negociaciones":
                         f_h = datetime.now().strftime("%d/%m/%Y")
                         num_c = ncc if ncc else df_n.at[idx, 'N° Cotiz.']
                         
-                        # PARCHE DE SEGURIDAD PARA CLIENTES VIEJOS
                         id_padre = str(df_n.at[idx, 'N° Nego']).strip()
                         if not id_padre or id_padre == 'nan': 
                             df_n.at[idx, 'N° Nego'] = generar_numero_negociacion(df_n)
@@ -526,11 +561,10 @@ elif section == "Negociaciones":
                         f_h = datetime.now().strftime("%d/%m/%Y")
                         num_c = ncc if ncc else generar_numero_cotizacion(df_n)
                         
-                        # PARCHE DE SEGURIDAD PARA CLIENTES VIEJOS
                         id_padre = str(row.get('N° Nego', '')).strip()
                         if not id_padre or id_padre == 'nan': 
                             id_padre = generar_numero_negociacion(df_n)
-                            df_n.at[idx, 'N° Nego'] = id_padre # Le inyecta el ID retroactivamente al padre viejo
+                            df_n.at[idx, 'N° Nego'] = id_padre
                         
                         new_r = pd.DataFrame([{
                             "N° Nego": id_padre, "Creado": f_h, "Cliente": row['Cliente'], "Empresa": row['Empresa'],
@@ -585,9 +619,17 @@ elif section == "Negociaciones":
 # --- POTENCIALES ---
 elif section == "Potenciales":
     st.markdown("## 🎯 Clientes Potenciales")
-    asesor_sel = st.selectbox("Filtrar por Asesor:", lista_asesores, index=index_inicio)
+    
+    c_f1, c_f2 = st.columns([1, 3])
+    with c_f1: asesor_sel = st.selectbox("Filtrar por Asesor:", lista_asesores, index=index_inicio)
+    with c_f2: busq_pot = st.text_input("🔍 Buscar Cliente/Empresa en Potenciales:")
+    
     df_pot = df[df['Estado_Nego'] == 'Potencial']
     if asesor_sel != "Todos los Asesores": df_pot = df_pot[df_pot['Asesor'] == asesor_sel]
+    
+    if busq_pot:
+        df_pot = df_pot[df_pot['Cliente'].astype(str).str.contains(busq_pot, case=False, na=False) | df_pot['Empresa'].astype(str).str.contains(busq_pot, case=False, na=False)]
+
     st.metric("Total de Leads", len(df_pot)); st.markdown("---")
 
     for idx, row in df_pot.iterrows():
@@ -625,8 +667,6 @@ elif section == "Potenciales":
                 st.markdown("### 🚀 Promover a Negociación")
                 m_f, p_f, d_f = modulo_calculadora(f"prov_{idx}")
                 n_l_p = st.text_input("Link PDF (Opcional)", key=f"pl_{idx}")
-                
-                # ACÁ ESTABA EL ERROR: Agregado el key="btn_promover_{idx}"
                 if st.button("🚀 Guardar Cotización y Promover", type="primary", key=f"btn_promover_{idx}"):
                     df_a = get_data_main()
                     df_a.at[idx, 'Estado_Nego'] = "En Proceso"
@@ -683,9 +723,14 @@ elif section == "Calendario":
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 Actualizar", use_container_width=True): st.cache_data.clear(); st.rerun()
     
+    busq_cal = st.text_input("🔍 Buscar Cliente/Empresa en Agenda:")
+    
     df_a = df[df['Estado_Nego'].isin(['En Proceso', 'Potencial']) & (df['Proxima llamada'].astype(str).str.strip() != '')].copy()
     
-    if df_a.empty: st.success("Todo al día. No hay llamadas pendientes.")
+    if busq_cal:
+        df_a = df_a[df_a['Cliente'].astype(str).str.contains(busq_cal, case=False, na=False) | df_a['Empresa'].astype(str).str.contains(busq_cal, case=False, na=False)]
+    
+    if df_a.empty: st.success("Todo al día. No hay llamadas pendientes para mostrar.")
     else:
         df_a['F'] = pd.to_datetime(df_a['Proxima llamada'], format='%d/%m/%Y %H:%M', errors='coerce').fillna(pd.to_datetime(df_a['Proxima llamada'], format='%d/%m/%Y', errors='coerce'))
         for idx, r in df_a.sort_values('F').iterrows():
