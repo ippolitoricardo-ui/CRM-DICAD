@@ -98,7 +98,6 @@ def procesar_excel(row, obs, tipo_doc):
     ws['B10'] = row['Cliente']
     ws['B11'] = row['Empresa']
     ws['B12'] = row['Telefono']
-    
     ws['A15'] = row['Asesor']
     ws['B15'] = date.today().strftime("%d/%m/%Y")
     ws['C15'] = row['N° Cotiz.']
@@ -111,7 +110,6 @@ def procesar_excel(row, obs, tipo_doc):
         ws[f'A{curr_row}'] = p['nombre']; ws[f'B{curr_row}'] = desc_limpia
         ws[f'C{curr_row}'] = p['cantidad']; ws[f'D{curr_row}'] = p['precio']
         ws[f'E{curr_row}'] = p['desc_val']; ws[f'F{curr_row}'] = p['importe']
-
         relleno = FILL_GRIS if i % 2 == 0 else FILL_BLANCO
         for col in ['A', 'B', 'C', 'D', 'E', 'F']:
             ws[f'{col}{curr_row}'].fill = relleno
@@ -188,8 +186,6 @@ def guardar_gestion(indice_original, nota_existente, nueva_nota, nueva_fecha_str
     df_actual = get_data_main(); fecha_hoy = datetime.now().strftime("%d/%m/%Y")
     texto_agregado = f"[{fecha_hoy}] 📝 {nueva_nota}" if nueva_nota.strip() else ""
     if nueva_fecha_str != str(fecha_anterior_str): texto_agregado += f" | 📅 Reprogramado: {nueva_fecha_str}" if texto_agregado else f"[{fecha_hoy}] 📅 Llamada reprogramada a: {nueva_fecha_str}"
-    
-    # NUEVA LÓGICA DE GUARDADO SEGURO
     if texto_agregado: df_actual.at[indice_original, 'Notas'] = texto_agregado if str(nota_existente).strip() in ["", "nan"] else f"{nota_existente}\n{texto_agregado}"
     df_actual.at[indice_original, 'Proxima llamada'] = nueva_fecha_str
     guardar_datos(df_actual, "Central Negociaciones")
@@ -383,7 +379,6 @@ elif section == "Negociaciones":
                 with col_btn1:
                     if st.button("🔄 Sobrescribir Actual", key=f"bnc_upd_{idx}", type="primary", use_container_width=True):
                         df_n = get_data_main(); f_h = datetime.now().strftime("%d/%m/%Y")
-                        # BUSQUEDA BLINDADA: Busca por N° Cotiz actual para no errarle de fila
                         target_idx = df_n[df_n['N° Cotiz.'] == row['N° Cotiz.']].index
                         if not target_idx.empty:
                             ti = target_idx[0]
@@ -446,12 +441,50 @@ elif section == "Potenciales":
                         df_u = get_data_main(); df_u.at[idx, 'Proxima llamada'] = ""; guardar_datos(df_u); st.rerun()
                 st.markdown("---"); st.markdown("### 🚀 Promover a Negociación")
                 m_f, p_f, d_f = modulo_calculadora(f"prov_{idx}"); n_l_p = st.text_input("Link PDF", key=f"pl_{idx}")
-                if st.button("🚀 Promover", type="primary", key=f"btn_promover_{idx}"):
+                if st.button("🚀 Promover", type="primary", key=f"btn_promover_ok_{idx}"):
                     df_a = get_data_main(); df_a.at[idx, 'Estado_Nego'] = "En Proceso"
                     df_a.at[idx, 'Monto USD / $'] = m_f; df_a.at[idx, 'Link_PDF'] = n_l_p
                     df_a.at[idx, 'Productos Seleccionados'] = p_f; df_a.at[idx, 'Descuento Aplicado'] = d_f
                     df_a.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_a); df_a.at[idx, 'N° Nego'] = generar_numero_negociacion(df_a)
                     guardar_datos(df_a); st.rerun()
+
+# --- PIPELINE KANBAN ---
+elif section == "Pipeline":
+    c_t, c_b = st.columns([4, 1])
+    with c_t: st.markdown("## 📊 Pipeline de Ventas")
+    with c_b: 
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Actualizar Tablero", use_container_width=True): st.cache_data.clear(); st.rerun()
+        
+    asesor_sel = st.selectbox("Filtrar Tablero por Asesor:", lista_asesores, index=index_inicio)
+    df_pipe = df if asesor_sel == "Todos los Asesores" else df[df['Asesor'] == asesor_sel]
+    estados_kanban = ["Potencial", "En Proceso", "Ganada", "Perdida"]; cols_kanban = st.columns(4)
+    
+    for i, estado in enumerate(estados_kanban):
+        with cols_kanban[i]:
+            df_col = df_pipe[df_pipe['Estado_Nego'] == estado]
+            tot_usd = sum(limpiar_monto_para_suma(x) for x in df_col['Monto USD / $'] if 'ARS' not in str(x).upper())
+            color_header = "#6c757d" if estado=="Potencial" else "#ffc107" if estado=="En Proceso" else "#28a745" if estado=="Ganada" else "#dc3545"
+            st.markdown(f"<div style='background-color:{color_header}; color:white; padding:10px; border-radius:5px; text-align:center; font-weight:bold; margin-bottom:15px;'>{estado.upper()} ({len(df_col)})<br>USD {tot_usd:,.0f}</div>", unsafe_allow_html=True)
+            
+            for idx, row in df_col.iterrows():
+                puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
+                
+                nego_codigo = str(row.get('N° Nego', '')).strip()
+                if not nego_codigo or nego_codigo == 'nan': nego_codigo = "S/N"
+                
+                st.markdown(f"<div style='background:white; padding:12px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.15); margin-bottom:5px; border-left:4px solid {color_header}; color:black;'><b style='font-size:14px;'>{row.get('Cliente','')}</b><br><span style='font-size:11px; color:#FF6600; font-weight:bold;'>{nego_codigo}</span> | <span style='font-size:12px; color:#555;'>{row.get('Empresa','')}</span><br><b style='font-size:13px; color:#2261b6;'>{row.get('Monto USD / $','')}</b><br><span style='font-size:11px; color:#888;'>📅 {row.get('Proxima llamada','')}</span></div>", unsafe_allow_html=True)
+                
+                if puede:
+                    opciones_mover = ["Mover a..."] + [e for e in estados_kanban if e != estado]
+                    nuevo_est = st.selectbox("Acción", opciones_mover, key=f"mov_pipe_{idx}_{row.get('N° Cotiz.','N')}", label_visibility="collapsed")
+                    if nuevo_est != "Mover a...":
+                        df_actual = get_data_main()
+                        df_actual.at[idx, 'Estado_Nego'] = nuevo_est
+                        if nuevo_est == "En Proceso" and not str(df_actual.at[idx, 'N° Cotiz.']).strip(): df_actual.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_actual)
+                        fecha_hoy = datetime.now().strftime("%d/%m/%Y"); nota_cambio = f"[{fecha_hoy}] 🔄 Movido a: {nuevo_est.upper()}"; nota_previa = str(df_actual.at[idx,'Notas'])
+                        df_actual.at[idx, 'Notas'] = nota_cambio if nota_previa.strip() in ["", "nan"] else f"{nota_previa}\n{nota_cambio}"
+                        guardar_datos(df_actual); st.rerun()
 
 # --- CALENDARIO ---
 elif section == "Calendario":
@@ -469,7 +502,7 @@ elif section == "Calendario":
             if (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == r.get('Asesor', '')):
                 c1, c2 = st.columns(2)
                 with c1: 
-                    if st.button("✅ Llamada OK", key=f"ok_cal_{idx}", use_container_width=True):
+                    if st.button("✅ Llamada OK", key=f"ok_cal_btn_{idx}", use_container_width=True):
                         df_u = get_data_main(); df_u.at[idx, 'Proxima llamada'] = ""; guardar_datos(df_u); st.rerun()
                 with c2: 
                     if st.link_button("📅 Google Calendar", link_cal, use_container_width=True): pass
