@@ -212,7 +212,9 @@ with st.sidebar:
     st.markdown('<style>[data-testid="stSidebar"] {background-color: #2E3E57 !important;}</style>', unsafe_allow_html=True)
     st.columns([1, 4, 1])[1].image("logo_dicad.png", use_column_width=True) 
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p><br>", unsafe_allow_html=True) 
-    section = option_menu(None, ["Potenciales", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario", "Catálogo de Productos"], icons=["person-bounding-box", "kanban", "briefcase", "person-plus", "calendar-date", "box-seam"], default_index=2, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
+    
+    # SE AGREGA EL DASHBOARD AL MENÚ
+    section = option_menu(None, ["Dashboard", "Potenciales", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario", "Catálogo de Productos"], icons=["bar-chart-line", "person-bounding-box", "kanban", "briefcase", "person-plus", "calendar-date", "box-seam"], default_index=3, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
     st.markdown("---")
     st.markdown(f"<div style='text-align: center; color: white; font-size: 14px; margin-bottom: 10px;'>{'👑 Admin' if st.session_state.usuario_actual == ADMINISTRADOR else '💼 Asesor'}: <b>{st.session_state.usuario_actual}</b></div>", unsafe_allow_html=True)
     if st.button("🚪 Cerrar Sesión", use_container_width=True): st.session_state.autenticado = False; st.session_state.usuario_actual = None; st.rerun()
@@ -258,8 +260,80 @@ def modulo_calculadora(key_prefix):
     else:
         st.info("Seleccioná al menos un producto."); return "", "", ""
 
+# --- DASHBOARD DE MÉTRICAS ---
+if section == "Dashboard":
+    st.markdown("## 📈 Dashboard y Métricas de Ventas")
+    
+    c_f1, c_f2 = st.columns(2)
+    with c_f1:
+        asesor_sel = st.selectbox("Filtrar por Asesor:", lista_asesores, index=index_inicio)
+    with c_f2:
+        filtro_fecha = st.selectbox("Rango de Fechas:", ["Todo el historial", "Últimos 7 días", "Últimos 30 días", "Últimos 60 días", "Fechas Personalizadas"])
+        
+    df_dash = df.copy()
+    # Convertimos la fecha de creación a formato Date para poder filtrarla
+    df_dash['Fecha_Date'] = pd.to_datetime(df_dash['Creado'], format='%d/%m/%Y', errors='coerce')
+    
+    # Lógica del Filtro de Fechas
+    if filtro_fecha != "Todo el historial":
+        hoy = pd.to_datetime(date.today())
+        if filtro_fecha == "Últimos 7 días":
+            df_dash = df_dash[df_dash['Fecha_Date'] >= hoy - timedelta(days=7)]
+        elif filtro_fecha == "Últimos 30 días":
+            df_dash = df_dash[df_dash['Fecha_Date'] >= hoy - timedelta(days=30)]
+        elif filtro_fecha == "Últimos 60 días":
+            df_dash = df_dash[df_dash['Fecha_Date'] >= hoy - timedelta(days=60)]
+        elif filtro_fecha == "Fechas Personalizadas":
+            cd1, cd2 = st.columns(2)
+            with cd1: d_desde = st.date_input("Desde", hoy - timedelta(days=30))
+            with cd2: d_hasta = st.date_input("Hasta", hoy)
+            df_dash = df_dash[(df_dash['Fecha_Date'] >= pd.to_datetime(d_desde)) & (df_dash['Fecha_Date'] <= pd.to_datetime(d_hasta))]
+
+    # Lógica del Filtro de Asesor
+    if asesor_sel != "Todos los Asesores":
+        df_dash = df_dash[df_dash['Asesor'] == asesor_sel]
+
+    # Limpiamos el monto aislando solo lo que está en USD
+    df_dash['Monto_USD'] = df_dash['Monto USD / $'].apply(lambda x: limpiar_monto_para_suma(x) if 'ARS' not in str(x).upper() else 0.0)
+
+    # Calculamos tarjetas
+    df_g = df_dash[df_dash['Estado_Nego'] == 'Ganada']
+    df_p = df_dash[df_dash['Estado_Nego'] == 'En Proceso']
+    df_l = df_dash[df_dash['Estado_Nego'] == 'Perdida']
+
+    st.markdown("---")
+    cm1, cm2, cm3, cm4 = st.columns(4)
+    cm1.metric("⏳ En Proceso (USD)", f"${df_p['Monto_USD'].sum():,.0f}", f"{len(df_p)} cotizaciones")
+    cm2.metric("🏆 Ganado (USD)", f"${df_g['Monto_USD'].sum():,.0f}", f"{len(df_g)} cotizaciones")
+    cm3.metric("❌ Perdido (USD)", f"${df_l['Monto_USD'].sum():,.0f}", f"{len(df_l)} cotizaciones")
+    
+    tasa = (len(df_g) / (len(df_g) + len(df_l)) * 100) if (len(df_g) + len(df_l)) > 0 else 0
+    cm4.metric("📊 Tasa de Cierre (Win Rate)", f"{tasa:.1f}%")
+
+    st.markdown("---")
+    # Gráficos
+    cg1, cg2 = st.columns(2)
+    with cg1:
+        st.markdown("#### 💵 Volumen de Ventas (USD)")
+        monto_est = df_dash.groupby('Estado_Nego')['Monto_USD'].sum().reset_index()
+        if not monto_est.empty and monto_est['Monto_USD'].sum() > 0:
+            fig1 = px.bar(monto_est, x='Estado_Nego', y='Monto_USD', color='Estado_Nego', color_discrete_map={'Potencial': '#6c757d', 'En Proceso': '#ffc107', 'Ganada': '#28a745', 'Perdida': '#dc3545', 'Descartada': '#343a40'})
+            st.plotly_chart(fig1, use_container_width=True)
+        else:
+            st.info("No hay montos en USD para graficar en este periodo.")
+            
+    with cg2:
+        st.markdown("#### 📑 Distribución de Cotizaciones")
+        cant_est = df_dash['Estado_Nego'].value_counts().reset_index()
+        cant_est.columns = ['Estado_Nego', 'Cantidad']
+        if not cant_est.empty:
+            fig2 = px.pie(cant_est, names='Estado_Nego', values='Cantidad', color='Estado_Nego', color_discrete_map={'Potencial': '#6c757d', 'En Proceso': '#ffc107', 'Ganada': '#28a745', 'Perdida': '#dc3545', 'Descartada': '#343a40'})
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.info("No hay datos para graficar.")
+
 # --- CATÁLOGO ---
-if section == "Catálogo de Productos":
+elif section == "Catálogo de Productos":
     st.markdown("## 📦 Catálogo Central de Productos")
     if st.session_state.usuario_actual == ADMINISTRADOR:
         with st.expander("➕ Cargar Nuevo Producto al Catálogo", expanded=False):
@@ -422,7 +496,7 @@ elif section == "Negociaciones":
                         df_n = get_data_main(); f_h = datetime.now().strftime("%d/%m/%Y")
                         id_p = str(row.get('N° Nego', '')).strip()
                         if not id_p or id_p == 'nan': id_p = generar_numero_negociacion(df_n)
-                        new_r = pd.DataFrame([{"N° Nego": id_p, "Creado": f_h, "Cliente": row['Cliente'], "Empresa": row['Empresa'], "Profesion": row['Profesion'], "Cargo": row['Cargo'], "Pais": row['Pais'], "Ciudad": row['Ciudad'], "Telefono": row['Telefono'], "Email": row['Email'], "N° Cotiz.": ncc if ncc else generar_numero_cotizacion(df_n), "Monto USD / $": m_f, "Asesor": row['Asesor'], "Estado_Nego": "En Proceso", "Link_PDF": ncp, "Productos Seleccionados": p_f, "Descuento Aplicado": d_f, "Notas": f"[{f_h}] ➕ Alternativa creada.", "Proxima llamada": row.get('Proxima llamada', '')}])
+                        new_r = pd.DataFrame([{"N° Nego": id_p, "Creado": f_h, "Cliente": row['Cliente'], "Empresa": row['Empresa'], "Profesion": row['Profesion'], "Cargo": row['Cargo'], "Pais": row['Pais'], "Ciudad": row['Ciudad'], "Telefono": row['Telefono'], "Email": row['Email'], "N° Cotiz.": ncc if ncc else generar_numero_cotizacion(df_n), "Monto USD / $": m_f, "Asesor": row['Asesor'], "Estado_Nego": "En Proceso", "Link_PDF": ncp, "Productos Seleccionados": p_f, "Descuento Aplicado": d_f, "Notas": f"➕ Alternativa creada.", "Proxima llamada": row.get('Proxima llamada', '')}])
                         guardar_datos(pd.concat([df_n, new_r], ignore_index=True)); st.rerun()
                 with col_btn3:
                     if st.button("🗑️ Anular Opción", key=f"desc_{idx}", use_container_width=True):
@@ -468,7 +542,6 @@ elif section == "Potenciales":
             st.info(f"**Historial:**\n{row.get('Notas', 'Sin notas.')}")
             
             if puede:
-                # --- NUEVO PANEL DE EDICIÓN EN POTENCIALES ---
                 with st.expander("⚙️ Editar Datos del Contacto"):
                     c_ep1, c_ep2 = st.columns(2)
                     with c_ep1: 
