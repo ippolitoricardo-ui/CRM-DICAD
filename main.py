@@ -358,7 +358,6 @@ elif section == "Negociaciones":
         with st.expander("Ver Ficha Completa"):
             puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
             
-            # --- RESTAURADO: VISTA RÁPIDA DE DATOS ---
             col1, col2 = st.columns(2)
             with col1: st.write(f"**Prof:** {row.get('Profesion','')} | **Cargo:** {row.get('Cargo','')}"); st.write(f"**Tel:** {row.get('Telefono','')}"); st.write(f"**Email:** {row.get('Email','')}")
             with col2: st.write(f"**Empresa:** {row.get('Empresa','')}"); st.write(f"**Cotiz:** {row.get('N° Cotiz.','')}"); st.write(f"**Asesor:** {row.get('Asesor','')}")
@@ -366,7 +365,6 @@ elif section == "Negociaciones":
             st.markdown("---")
 
             if puede:
-                # --- RESTAURADO: PANEL DE EDICIÓN ---
                 with st.expander("⚙️ Editar Datos del Contacto / Cotización"):
                     c_e1, c_e2 = st.columns(2)
                     with c_e1: 
@@ -417,21 +415,21 @@ elif section == "Negociaciones":
                             df_n.at[ti, 'N° Cotiz.'] = ncc if ncc else row['N° Cotiz.']
                             df_n.at[ti, 'Monto USD / $'] = m_f; df_n.at[ti, 'Productos Seleccionados'] = p_f
                             df_n.at[ti, 'Descuento Aplicado'] = d_f; df_n.at[ti, 'Link_PDF'] = ncp if ncp else row['Link_PDF']
-                            df_n.at[ti, 'Notas'] = str(df_n.at[ti, 'Notas']) + f"\n[{f_h}] 🔄 Cotización actualizada."
+                            df_n.at[ti, 'Notas'] = str(df_n.at[ti, 'Notas']) + f"\n[{f_h}] 🔄 Cotización actualizada a {m_f}."
                             guardar_datos(df_n); st.rerun()
                 with col_btn2:
                     if st.button("➕ Crear Alternativa", key=f"bnc_alt_{idx}", use_container_width=True):
                         df_n = get_data_main(); f_h = datetime.now().strftime("%d/%m/%Y")
                         id_p = str(row.get('N° Nego', '')).strip()
                         if not id_p or id_p == 'nan': id_p = generar_numero_negociacion(df_n)
-                        new_r = pd.DataFrame([{"N° Nego": id_p, "Creado": f_h, "Cliente": row['Cliente'], "Empresa": row['Empresa'], "Profesion": row['Profesion'], "Cargo": row['Cargo'], "Pais": row['Pais'], "Ciudad": row['Ciudad'], "Telefono": row['Telefono'], "Email": row['Email'], "N° Cotiz.": ncc if ncc else generar_numero_cotizacion(df_n), "Monto USD / $": m_f, "Asesor": row['Asesor'], "Estado_Nego": "En Proceso", "Link_PDF": ncp, "Productos Seleccionados": p_f, "Descuento Aplicado": d_f, "Notas": f"➕ Alternativa creada.", "Proxima llamada": row.get('Proxima llamada', '')}])
+                        new_r = pd.DataFrame([{"N° Nego": id_p, "Creado": f_h, "Cliente": row['Cliente'], "Empresa": row['Empresa'], "Profesion": row['Profesion'], "Cargo": row['Cargo'], "Pais": row['Pais'], "Ciudad": row['Ciudad'], "Telefono": row['Telefono'], "Email": row['Email'], "N° Cotiz.": ncc if ncc else generar_numero_cotizacion(df_n), "Monto USD / $": m_f, "Asesor": row['Asesor'], "Estado_Nego": "En Proceso", "Link_PDF": ncp, "Productos Seleccionados": p_f, "Descuento Aplicado": d_f, "Notas": f"[{f_h}] ➕ Alternativa creada.", "Proxima llamada": row.get('Proxima llamada', '')}])
                         guardar_datos(pd.concat([df_n, new_r], ignore_index=True)); st.rerun()
                 with col_btn3:
                     if st.button("🗑️ Anular Opción", key=f"desc_{idx}", use_container_width=True):
                         df_n = get_data_main(); target_idx = df_n[df_n['N° Cotiz.'] == row['N° Cotiz.']].index
                         if not target_idx.empty: df_n.at[target_idx[0], 'Estado_Nego'] = "Descartada"; guardar_datos(df_n); st.rerun()
 
-            st.markdown("---"); st.markdown("**📝 Seguimiento:**"); st.caption(row.get('Notas',''))
+            st.markdown("---"); st.markdown("**📝 Seguimiento:**"); st.info(f"**Historial:**\n{row.get('Notas', 'Sin notas.')}")
             if puede:
                 cn1, cn2, cn3 = st.columns([1.5, 2, 1.5])
                 with cn1:
@@ -455,11 +453,43 @@ elif section == "Potenciales":
     if asesor_sel != "Todos los Asesores": df_pot = df_pot[df_pot['Asesor'] == asesor_sel]
     if busq_pot: df_pot = df_pot[df_pot['Cliente'].astype(str).str.contains(busq_pot, case=False, na=False)]
     
+    st.metric("Total de Leads", len(df_pot)); st.markdown("---")
+
     for idx, row in df_pot.iterrows():
         puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
         st.markdown(f'<div style="background:white;padding:1em;border-radius:10px;border-left:5px solid #6c757d;margin-bottom:0.5em;box-shadow:0 1px 4px #d0d6e1;color:black;"><b>{row.get("Cliente", "")}</b> ({row.get("Empresa", "")}) | 📞 {row.get("Telefono", "")} | 📅 {row.get("Proxima llamada", "")}</div>', unsafe_allow_html=True)
-        with st.expander(f"Gestionar"):
+        
+        with st.expander("📞 ASISTENTE DE LLAMADA (Guiones de Descubrimiento)", expanded=False):
+            st.warning("🗣️ **Objetivo de esta llamada:** Descubrir el dolor del cliente y generar interés para enviar presupuesto.")
+            st.markdown("💡 **Tip 1:** ¿Qué desafío estructural o de tiempos los motivó a buscar nuevas herramientas?")
+            st.markdown("💡 **Tip 2:** ¿Qué software están usando hoy y qué es lo que más les frustra de ese proceso?")
+        
+        with st.expander(f"Ver / Editar a {row.get('Cliente', '')}"):
+            st.info(f"**Historial:**\n{row.get('Notas', 'Sin notas.')}")
+            
             if puede:
+                # --- NUEVO PANEL DE EDICIÓN EN POTENCIALES ---
+                with st.expander("⚙️ Editar Datos del Contacto"):
+                    c_ep1, c_ep2 = st.columns(2)
+                    with c_ep1: 
+                        ec_p = st.text_input("Nombre", row.get('Cliente',''), key=f"ecp_{idx}")
+                        ee_p = st.text_input("Empresa", row.get('Empresa',''), key=f"eep_{idx}")
+                        eprof_p = st.text_input("Profesión", row.get('Profesion',''), key=f"eprp_{idx}")
+                        ecargo_p = st.text_input("Cargo", row.get('Cargo',''), key=f"ecrp_{idx}")
+                    with c_ep2:
+                        idx_pa_p = next((i for i, p in enumerate(CODIGOS_PAISES) if str(row.get('Pais','')).lower() in p.lower() and row.get('Pais','') != ""), 0)
+                        ep_p = st.selectbox("País", CODIGOS_PAISES, index=idx_pa_p, key=f"epp_{idx}")
+                        eciu_p = st.text_input("Ciudad", row.get('Ciudad',''), key=f"eciup_{idx}")
+                        em_p = st.text_input("Email", row.get('Email',''), key=f"emp_{idx}")
+                        etel_p = st.text_input("Teléfono", row.get('Telefono',''), key=f"etelp_{idx}")
+                    if st.button("💾 Actualizar Datos", key=f"becp_{idx}", type="primary"):
+                        pn_p, cn_p = extraer_pais_codigo(ep_p)
+                        telf_p = f"{cn_p} {etel_p}" if (etel_p.strip() and not etel_p.startswith("+") and cn_p) else etel_p
+                        df_u = get_data_main()
+                        df_u.loc[idx, ['Cliente','Empresa','Profesion','Cargo','Pais','Ciudad','Email','Telefono']] = [ec_p, ee_p, eprof_p, ecargo_p, pn_p, eciu_p, em_p, telf_p]
+                        guardar_datos(df_u); st.rerun()
+                st.markdown("---")
+                
                 c_n1, c_n2, c_n3 = st.columns([1.5, 2, 1.5])
                 with c_n1:
                     f_o, h_o = parsear_fecha_hora(row.get('Proxima llamada', ''))
