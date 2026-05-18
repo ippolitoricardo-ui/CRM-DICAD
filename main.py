@@ -18,7 +18,7 @@ st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
 USUARIOS = st.secrets["passwords"]
 ADMINISTRADOR = "Ricardo Ippolito"
-TECNICOS = ["Aldana Rodriguez Masin", "Martin Eduardo Luna"] # Perfil con permisos limitados a Soporte
+TECNICOS = ["Aldana Rodriguez Masin", "Martin Eduardo Luna"]
 
 GSHEET_URL = st.secrets.get("SHEET_URL", "")
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -232,6 +232,10 @@ df_cat = get_data_cat()
 lista_asesores = ["Todos los Asesores"] + list(USUARIOS.keys())
 index_inicio = lista_asesores.index(st.session_state.usuario_actual) if st.session_state.usuario_actual in lista_asesores and not es_tecnico else 0
 
+# --- RADAR DE CLIENTES VIP ---
+# Extrae una lista única de todos los nombres que alguna vez tuvieron una cotización "Ganada"
+clientes_actuales = df[df['Estado_Nego'] == 'Ganada']['Cliente'].astype(str).str.strip().unique().tolist()
+
 # --- CALCULADORA DE PRODUCTOS JSON ---
 def modulo_calculadora(key_prefix):
     st.markdown("### 🛒 Configurador de Cotización")
@@ -343,7 +347,10 @@ elif section == "Soporte":
     
     for idx, row in df_soporte.iterrows():
         est_actual = row.get("Estado_Nego", "Desconocido")
-        st.markdown(f'<div style="background:white;padding:1em;border-radius:10px;border-left:5px solid #17a2b8;margin-bottom:0.5em;box-shadow:0 1px 4px #d0d6e1;color:black;"><b>{row.get("Cliente", "")}</b> ({row.get("Empresa", "")}) | 📞 {row.get("Telefono", "")} | 📧 {row.get("Email", "")} <span style="float:right;background:#f8f9fa;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:11px;">{est_actual.upper()}</span></div>', unsafe_allow_html=True)
+        es_cli = str(row.get('Cliente', '')).strip() in clientes_actuales
+        badge_cli = "<span style='background:#0d6efd;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:5px;vertical-align:middle;'>⭐ CLIENTE</span>" if es_cli else ""
+        
+        st.markdown(f'<div style="background:white;padding:1em;border-radius:10px;border-left:5px solid #17a2b8;margin-bottom:0.5em;box-shadow:0 1px 4px #d0d6e1;color:black;"><b>{row.get("Cliente", "")}</b>{badge_cli} ({row.get("Empresa", "")}) | 📞 {row.get("Telefono", "")} | 📧 {row.get("Email", "")} <span style="float:right;background:#f8f9fa;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:11px;">{est_actual.upper()}</span></div>', unsafe_allow_html=True)
         
         with st.expander(f"🛠️ Ver / Cargar Nota de Soporte"):
             st.info(f"**Historial Completo del Cliente:**\n{row.get('Notas', 'Sin notas.')}")
@@ -451,10 +458,14 @@ elif section == "Negociaciones":
     for idx, row in df_f.iterrows():
         est = row.get('Estado_Nego', 'En Proceso'); color = "#28a745" if est == 'Ganada' else "#dc3545" if est == 'Perdida' else "#ffc107"
         nego_codigo = str(row.get('N° Nego', '')).strip(); nego_codigo = nego_codigo if (nego_codigo and nego_codigo != 'nan') else "S/N"
+        
+        es_cli = str(row.get('Cliente', '')).strip() in clientes_actuales
+        badge_cli = "<span style='background:#0d6efd;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:5px;vertical-align:middle;'>⭐ CLIENTE</span>" if es_cli else ""
+
         try: prods_json = json.loads(row.get('Productos Seleccionados', '[]')); texto_prods = " + ".join([p['nombre'] for p in prods_json])
         except: texto_prods = str(row.get('Productos Seleccionados', ''))
         badge_fecha = f"<br><span style='background:#6c757d;color:white;padding:4px 8px;border-radius:6px;font-size:11px;font-weight:bold; display:inline-block; margin-top:5px;'>📅 {row.get('Proxima llamada', '')}</span>" if str(row.get('Proxima llamada', '')).strip() else ""
-        st.markdown(f"<div style='background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black; overflow:hidden;'><div style='float:right; text-align:right;'><span style='background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold; display:inline-block;'>{est.upper()}</span>{badge_fecha}</div><b>Nego:</b> <span style='color:#FF6600;font-weight:bold;'>{nego_codigo}</span> | <b>Cliente:</b> {row.get('Cliente', '')}<br><b>Monto:</b> <span style='color:#2261b6;font-weight:bold;'>{row.get('Monto USD / $', '')}</span> | <small>📦 {texto_prods}</small></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black; overflow:hidden;'><div style='float:right; text-align:right;'><span style='background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold; display:inline-block;'>{est.upper()}</span>{badge_fecha}</div><b>Nego:</b> <span style='color:#FF6600;font-weight:bold;'>{nego_codigo}</span> | <b>Cliente:</b> {row.get('Cliente', '')}{badge_cli}<br><b>Monto:</b> <span style='color:#2261b6;font-weight:bold;'>{row.get('Monto USD / $', '')}</span> | <small>📦 {texto_prods}</small></div>", unsafe_allow_html=True)
         
         with st.expander("Ver Ficha Completa"):
             puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
@@ -525,7 +536,11 @@ elif section == "Potenciales":
 
     for idx, row in df_pot.iterrows():
         puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
-        st.markdown(f'<div style="background:white;padding:1em;border-radius:10px;border-left:5px solid #6c757d;margin-bottom:0.5em;box-shadow:0 1px 4px #d0d6e1;color:black;"><b>{row.get("Cliente", "")}</b> ({row.get("Empresa", "")}) | 📞 {row.get("Telefono", "")} | 📅 {row.get("Proxima llamada", "")}</div>', unsafe_allow_html=True)
+        
+        es_cli = str(row.get('Cliente', '')).strip() in clientes_actuales
+        badge_cli = "<span style='background:#0d6efd;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:5px;vertical-align:middle;'>⭐ CLIENTE</span>" if es_cli else ""
+
+        st.markdown(f'<div style="background:white;padding:1em;border-radius:10px;border-left:5px solid #6c757d;margin-bottom:0.5em;box-shadow:0 1px 4px #d0d6e1;color:black;"><b>{row.get("Cliente", "")}</b>{badge_cli} ({row.get("Empresa", "")}) | 📞 {row.get("Telefono", "")} | 📅 {row.get("Proxima llamada", "")}</div>', unsafe_allow_html=True)
         
         with st.expander("📞 ASISTENTE DE LLAMADA (Guiones de Descubrimiento)", expanded=False):
             st.warning("🗣️ **Objetivo de esta llamada:** Descubrir el dolor del cliente y generar interés para enviar presupuesto.")
@@ -534,6 +549,7 @@ elif section == "Potenciales":
         
         with st.expander(f"Ver / Editar a {row.get('Cliente', '')}"):
             st.info(f"**Historial:**\n{row.get('Notas', 'Sin notas.')}")
+            
             if puede:
                 with st.expander("⚙️ Editar Datos del Contacto"):
                     c_ep1, c_ep2 = st.columns(2)
@@ -566,7 +582,11 @@ elif section == "Pipeline":
             st.markdown(f"<div style='background-color:{color_header}; color:white; padding:10px; border-radius:5px; text-align:center; font-weight:bold; margin-bottom:15px;'>{estado.upper()} ({len(df_col)})<br>USD {tot_usd:,.0f}</div>", unsafe_allow_html=True)
             for idx, row in df_col.iterrows():
                 puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', '')); nego_codigo = str(row.get('N° Nego', '')).strip(); nego_codigo = nego_codigo if (nego_codigo and nego_codigo != 'nan') else "S/N"
-                st.markdown(f"<div style='background:white; padding:12px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.15); margin-bottom:5px; border-left:4px solid {color_header}; color:black;'><b style='font-size:14px;'>{row.get('Cliente','')}</b><br><span style='font-size:11px; color:#FF6600; font-weight:bold;'>{nego_codigo}</span> | <span style='font-size:12px; color:#555;'>{row.get('Empresa','')}</span><br><b style='font-size:13px; color:#2261b6;'>{row.get('Monto USD / $','')}</b><br><span style='font-size:11px; color:#888;'>📅 {row.get('Proxima llamada','')}</span></div>", unsafe_allow_html=True)
+                
+                es_cli = str(row.get('Cliente', '')).strip() in clientes_actuales
+                badge_cli = "<span style='background:#0d6efd;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:5px;vertical-align:middle;'>⭐ CLIENTE</span>" if es_cli else ""
+                
+                st.markdown(f"<div style='background:white; padding:12px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.15); margin-bottom:5px; border-left:4px solid {color_header}; color:black;'><b style='font-size:14px;'>{row.get('Cliente','')}</b>{badge_cli}<br><span style='font-size:11px; color:#FF6600; font-weight:bold;'>{nego_codigo}</span> | <span style='font-size:12px; color:#555;'>{row.get('Empresa','')}</span><br><b style='font-size:13px; color:#2261b6;'>{row.get('Monto USD / $','')}</b><br><span style='font-size:11px; color:#888;'>📅 {row.get('Proxima llamada','')}</span></div>", unsafe_allow_html=True)
                 if puede:
                     nuevo_est = st.selectbox("Acción", ["Mover a..."] + [e for e in estados_kanban if e != estado], key=f"mov_pipe_{idx}_{row.get('N° Cotiz.','N')}", label_visibility="collapsed")
                     if nuevo_est != "Mover a...":
@@ -586,7 +606,11 @@ elif section == "Calendario":
         df_a['F'] = pd.to_datetime(df_a['Proxima llamada'], format='%d/%m/%Y %H:%M', errors='coerce').fillna(pd.to_datetime(df_a['Proxima llamada'], format='%d/%m/%Y', errors='coerce'))
         for idx, r in df_a.sort_values('F').iterrows():
             link_cal = generar_link_gcal(r['Cliente'], r['Empresa'], r['Telefono'], r['Proxima llamada'])
-            st.markdown(f'<div style="background:#2E3E57;padding:15px;border-radius:10px;margin-bottom:10px;border-left:5px solid #FF6600;"><h4 style="color:white;margin:0;">📅 {r["Proxima llamada"]} | {r["Cliente"]}</h4><p style="color:#d0d6e1;margin:5px 0;">📞 {r["Telefono"]} | 👔 {r["Asesor"]}</p></div>', unsafe_allow_html=True)
+            
+            es_cli = str(r['Cliente']).strip() in clientes_actuales
+            badge_cli = "<span style='background:#0d6efd;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:5px;vertical-align:middle;'>⭐ CLIENTE</span>" if es_cli else ""
+            
+            st.markdown(f'<div style="background:#2E3E57;padding:15px;border-radius:10px;margin-bottom:10px;border-left:5px solid #FF6600;"><h4 style="color:white;margin:0;">📅 {r["Proxima llamada"]} | {r["Cliente"]} {badge_cli}</h4><p style="color:#d0d6e1;margin:5px 0;">📞 {r["Telefono"]} | 👔 {r["Asesor"]}</p></div>', unsafe_allow_html=True)
             if (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == r.get('Asesor', '')) or es_tecnico:
                 c1, c2, c3 = st.columns(3)
                 with c1:
