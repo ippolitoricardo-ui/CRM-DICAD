@@ -7,6 +7,7 @@ import plotly.express as px
 import urllib.parse
 import json
 import io
+import time
 
 try:
     import openpyxl
@@ -212,7 +213,7 @@ with st.sidebar:
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p><br>", unsafe_allow_html=True) 
     if es_tecnico: opciones_menu = ["Soporte", "Calendario"]; iconos_menu = ["headset", "calendar-date"]
     else: opciones_menu = ["Dashboard", "Soporte", "Potenciales", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario", "Catálogo de Productos"]; iconos_menu = ["bar-chart-line", "headset", "person-bounding-box", "kanban", "briefcase", "person-plus", "calendar-date", "box-seam"]
-    section = option_menu(None, opciones_menu, icons=iconos_menu, default_index=0, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
+    section = option_menu(None, opciones_menu, icons=iconos_menu, default_index=0 if es_tecnico else 4, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
     st.markdown("---")
     rol_badge = '🛠️ Técnico' if es_tecnico else ('👑 Admin' if st.session_state.usuario_actual == ADMINISTRADOR else '💼 Asesor')
     st.markdown(f"<div style='text-align: center; color: white; font-size: 14px; margin-bottom: 10px;'>{rol_badge}: <b>{st.session_state.usuario_actual}</b></div>", unsafe_allow_html=True)
@@ -318,34 +319,28 @@ elif section == "Soporte":
                             df_upd_t.at[idx_t, 'Resolucion'] = resolucion
                             df_upd_t.at[idx_t, 'Tecnico'] = st.session_state.usuario_actual
                             guardar_datos(df_upd_t, "Tickets")
-                            st.success("Ticket cerrado exitosamente."); st.rerun()
+                            st.success("✅ Ticket cerrado exitosamente.")
+                            time.sleep(1.5)
+                            st.rerun()
         
         st.markdown("---")
         st.markdown("### 🟢 Tickets Resueltos")
-        df_resueltos = df_tickets[df_tickets['Estado'] == 'Resuelto'].sort_values(by='N° Ticket', ascending=False).head(20) # Muestra los ultimos 20
+        df_resueltos = df_tickets[df_tickets['Estado'] == 'Resuelto'].sort_values(by='N° Ticket', ascending=False).head(20)
         for idx_t, row_t in df_resueltos.iterrows():
             st.markdown(f"<div style='background:white;padding:1em;border-radius:10px;border-left:5px solid #28a745;margin-bottom:0.5em;color:black;'><b>Ticket: {row_t['N° Ticket']}</b> | <b>Cliente:</b> {row_t['Cliente']} <br> <b>Asunto:</b> {row_t['Asunto']} <br> <b>Técnico:</b> {row_t['Tecnico']}</div>", unsafe_allow_html=True)
             with st.expander("Ver Reporte y Descargar"):
                 st.write(f"**Resolución:** {row_t['Resolucion']}")
-                
-                texto_ticket = f"--- TICKET DE SOPORTE DICAD AMÉRICA ---\n"
-                texto_ticket += f"N° Ticket: {row_t['N° Ticket']}\n"
-                texto_ticket += f"Fecha de Apertura: {row_t['Fecha']}\n"
-                texto_ticket += f"Cliente: {row_t['Cliente']} ({row_t['Empresa']})\n"
-                texto_ticket += f"Técnico Asignado: {row_t['Tecnico']}\n\n"
-                texto_ticket += f"ASUNTO REPORTADO:\n{row_t['Asunto']}\n\n"
-                texto_ticket += f"RESOLUCIÓN OTORGADA:\n{row_t['Resolucion']}\n"
-                texto_ticket += f"---------------------------------------\n"
-                
-                st.download_button(label="⬇️ Descargar Reporte de Ticket (.txt)", data=texto_ticket, file_name=f"Reporte_{row_t['N° Ticket']}.txt", mime="text/plain", key=f"dl_tkt_{idx_t}")
+                texto_ticket = f"--- TICKET DE SOPORTE DICAD AMÉRICA ---\nN° Ticket: {row_t['N° Ticket']}\nFecha de Apertura: {row_t['Fecha']}\nCliente: {row_t['Cliente']} ({row_t['Empresa']})\nTécnico Asignado: {row_t['Tecnico']}\n\nASUNTO REPORTADO:\n{row_t['Asunto']}\n\nRESOLUCIÓN OTORGADA:\n{row_t['Resolucion']}\n---------------------------------------\n"
+                st.download_button(label="⬇️ Descargar Reporte (.txt)", data=texto_ticket, file_name=f"Reporte_{row_t['N° Ticket']}.txt", mime="text/plain", key=f"dl_tkt_{idx_t}")
 
     with tab_s:
-        busq_soporte = st.text_input("🔍 Buscar Cliente o Empresa en la base de datos:")
+        busq_soporte = st.text_input("🔍 Buscar Cliente/Empresa/Email:")
         df_soporte = df.copy()
-        if busq_soporte: df_soporte = df_soporte[df_soporte['Cliente'].astype(str).str.contains(busq_soporte, case=False, na=False) | df_soporte['Empresa'].astype(str).str.contains(busq_soporte, case=False, na=False)]
+        if busq_soporte: 
+            cond_s = (df_soporte['Cliente'].astype(str).str.contains(busq_soporte, case=False, na=False) | df_soporte['Empresa'].astype(str).str.contains(busq_soporte, case=False, na=False) | df_soporte['Email'].astype(str).str.contains(busq_soporte, case=False, na=False))
+            df_soporte = df_soporte[cond_s]
         
-        st.metric("Contactos Encontrados", len(df_soporte))
-        st.markdown("---")
+        st.metric("Contactos Encontrados", len(df_soporte)); st.markdown("---")
         
         for idx, row in df_soporte.iterrows():
             est_actual = row.get("Estado_Nego", "Desconocido")
@@ -370,7 +365,9 @@ elif section == "Soporte":
                                 "Asunto": asunto_ticket, "Estado": "Abierto", "Resolucion": "", "Tecnico": ""
                             }])
                             guardar_datos(pd.concat([df_t, nuevo_tkt], ignore_index=True), "Tickets")
-                            st.success(f"Ticket {num_tkt} creado y enviado a la cola de pendientes."); st.rerun()
+                            st.success(f"✅ ¡Éxito! Ticket {num_tkt} creado. Revisá el Panel de Tickets.")
+                            time.sleep(1.5)
+                            st.rerun()
                 
                 with c_tabs2:
                     st.info(f"**Historial Completo:**\n{row.get('Notas', 'Sin notas.')}")
@@ -386,6 +383,21 @@ elif section == "Soporte":
                             guardar_gestion(idx, row.get('Notas',''), nota_final, f"{n_f.strftime('%d/%m/%Y')} {n_h.strftime('%H:%M')}", row.get('Proxima llamada','')); st.rerun()
                         if st.button("✅ Desagendar Llamada", key=f"ok_soporte_{idx}", use_container_width=True):
                             df_u = get_data_main(); df_u.at[idx, 'Proxima llamada'] = ""; df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ✅ Llamada de soporte completada."; guardar_datos(df_u); st.rerun()
+                
+                if st.session_state.usuario_actual == ADMINISTRADOR:
+                    st.markdown("---")
+                    st.markdown("### 🔄 Reasignar Asesor (Admin)")
+                    c_rs1, c_rs2 = st.columns([3, 1])
+                    asesores_list = list(USUARIOS.keys())
+                    asesor_actual = str(row.get('Asesor', ''))
+                    idx_asesor = asesores_list.index(asesor_actual) if asesor_actual in asesores_list else 0
+                    nuevo_as = c_rs1.selectbox("Asignar a:", asesores_list, index=idx_asesor, key=f"reasig_s_{idx}")
+                    if c_rs2.button("🔁 Reasignar", key=f"btn_reasig_s_{idx}", use_container_width=True):
+                        if nuevo_as != asesor_actual:
+                            df_u = get_data_main()
+                            df_u.at[idx, 'Asesor'] = nuevo_as
+                            df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🔄 Admin reasignó contacto de {asesor_actual} a {nuevo_as}."
+                            guardar_datos(df_u); st.rerun()
 
 # --- CATÁLOGO ---
 elif section == "Catálogo de Productos":
@@ -467,7 +479,12 @@ elif section == "Negociaciones":
         st.markdown("---")
     asesor_sel = st.selectbox("Seleccionar Asesor:", lista_asesores, index=index_inicio)
     df_tab = df_nego if asesor_sel == "Todos los Asesores" else df_nego[df_nego['Asesor'] == asesor_sel]
-    busq = st.text_input("🔍 Buscar Cliente/Empresa:"); df_f = df_tab[df_tab['Cliente'].astype(str).str.contains(busq, case=False) | df_tab['Empresa'].astype(str).str.contains(busq, case=False)] if busq else df_tab
+    
+    busq = st.text_input("🔍 Buscar Cliente/Empresa/Email:")
+    if busq:
+        cond_n = (df_tab['Cliente'].astype(str).str.contains(busq, case=False, na=False) | df_tab['Empresa'].astype(str).str.contains(busq, case=False, na=False) | df_tab['Email'].astype(str).str.contains(busq, case=False, na=False))
+        df_f = df_tab[cond_n]
+    else: df_f = df_tab
 
     for idx, row in df_f.iterrows():
         est = row.get('Estado_Nego', 'En Proceso'); color = "#28a745" if est == 'Ganada' else "#dc3545" if est == 'Perdida' else "#ffc107"
@@ -546,13 +563,31 @@ elif section == "Negociaciones":
                     if cg.button("✅ CERRADA GANADA", key=f"g_{idx}", use_container_width=True): df_g = get_data_main(); df_g.at[idx, 'Estado_Nego'] = "Ganada"; df_g.at[idx, 'Notas'] = str(df_g.at[idx,'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🏆 CERRADA GANADA"; guardar_datos(df_g); st.rerun()
                     if cp.button("❌ CERRADA PERDIDA", key=f"p_{idx}", use_container_width=True): df_p = get_data_main(); df_p.at[idx, 'Estado_Nego'] = "Perdida"; df_p.at[idx, 'Notas'] = str(df_p.at[idx,'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ❌ CERRADA PERDIDA"; guardar_datos(df_p); st.rerun()
 
+            if st.session_state.usuario_actual == ADMINISTRADOR:
+                st.markdown("---")
+                st.markdown("### 🔄 Reasignar Asesor (Admin)")
+                c_rn1, c_rn2 = st.columns([3, 1])
+                asesores_list = list(USUARIOS.keys())
+                asesor_actual = str(row.get('Asesor', ''))
+                idx_asesor = asesores_list.index(asesor_actual) if asesor_actual in asesores_list else 0
+                nuevo_as = c_rn1.selectbox("Cambiar asesor a:", asesores_list, index=idx_asesor, key=f"reasig_n_{idx}")
+                if c_rn2.button("🔁 Reasignar", key=f"btn_reasig_n_{idx}", use_container_width=True):
+                    if nuevo_as != asesor_actual:
+                        df_u = get_data_main()
+                        df_u.at[idx, 'Asesor'] = nuevo_as
+                        df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🔄 Admin reasignó contacto de {asesor_actual} a {nuevo_as}."
+                        guardar_datos(df_u); st.rerun()
+
 # --- POTENCIALES ---
 elif section == "Potenciales":
     st.markdown("## 🎯 Clientes Potenciales")
-    c_f1, c_f2 = st.columns([1, 3]); asesor_sel = c_f1.selectbox("Asesor:", lista_asesores, index=index_inicio); busq_pot = c_f2.text_input("🔍 Buscar en Potenciales:")
+    c_f1, c_f2 = st.columns([1, 3]); asesor_sel = c_f1.selectbox("Asesor:", lista_asesores, index=index_inicio); busq_pot = c_f2.text_input("🔍 Buscar Cliente/Empresa/Email:")
     df_pot = df[df['Estado_Nego'] == 'Potencial']
     if asesor_sel != "Todos los Asesores": df_pot = df_pot[df_pot['Asesor'] == asesor_sel]
-    if busq_pot: df_pot = df_pot[df_pot['Cliente'].astype(str).str.contains(busq_pot, case=False, na=False)]
+    if busq_pot: 
+        cond_p = (df_pot['Cliente'].astype(str).str.contains(busq_pot, case=False, na=False) | df_pot['Empresa'].astype(str).str.contains(busq_pot, case=False, na=False) | df_pot['Email'].astype(str).str.contains(busq_pot, case=False, na=False))
+        df_pot = df_pot[cond_p]
+        
     st.metric("Total de Leads", len(df_pot)); st.markdown("---")
 
     for idx, row in df_pot.iterrows():
@@ -589,6 +624,21 @@ elif section == "Potenciales":
                     if not str(df_a.at[idx, 'N° Nego']).strip() or str(df_a.at[idx, 'N° Nego']) == 'nan': df_a.at[idx, 'N° Nego'] = generar_numero_negociacion(df_a)
                     guardar_datos(df_a); st.rerun()
 
+            if st.session_state.usuario_actual == ADMINISTRADOR:
+                st.markdown("---")
+                st.markdown("### 🔄 Reasignar Asesor (Admin)")
+                c_rp1, c_rp2 = st.columns([3, 1])
+                asesores_list = list(USUARIOS.keys())
+                asesor_actual = str(row.get('Asesor', ''))
+                idx_asesor = asesores_list.index(asesor_actual) if asesor_actual in asesores_list else 0
+                nuevo_as = c_rp1.selectbox("Cambiar asesor a:", asesores_list, index=idx_asesor, key=f"reasig_p_{idx}")
+                if c_rp2.button("🔁 Reasignar", key=f"btn_reasig_p_{idx}", use_container_width=True):
+                    if nuevo_as != asesor_actual:
+                        df_u = get_data_main()
+                        df_u.at[idx, 'Asesor'] = nuevo_as
+                        df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🔄 Admin reasignó contacto de {asesor_actual} a {nuevo_as}."
+                        guardar_datos(df_u); st.rerun()
+
 # --- PIPELINE KANBAN ---
 elif section == "Pipeline":
     c_t, c_b = st.columns([4, 1])
@@ -619,9 +669,12 @@ elif section == "Pipeline":
 
 # --- CALENDARIO ---
 elif section == "Calendario":
-    st.markdown("## 📅 Agenda Diaria"); busq_cal = st.text_input("🔍 Buscar en Agenda:")
+    st.markdown("## 📅 Agenda Diaria"); busq_cal = st.text_input("🔍 Buscar Cliente/Empresa/Email en Agenda:")
     df_a = df[df['Estado_Nego'].isin(['En Proceso', 'Potencial']) & (df['Proxima llamada'].astype(str).str.strip() != '')].copy()
-    if busq_cal: df_a = df_a[df_a['Cliente'].astype(str).str.contains(busq_cal, case=False, na=False)]
+    if busq_cal: 
+        cond_c = (df_a['Cliente'].astype(str).str.contains(busq_cal, case=False, na=False) | df_a['Empresa'].astype(str).str.contains(busq_cal, case=False, na=False) | df_a['Email'].astype(str).str.contains(busq_cal, case=False, na=False))
+        df_a = df_a[cond_c]
+        
     if df_a.empty: st.success("Sin llamadas pendientes.")
     else:
         df_a['F'] = pd.to_datetime(df_a['Proxima llamada'], format='%d/%m/%Y %H:%M', errors='coerce').fillna(pd.to_datetime(df_a['Proxima llamada'], format='%d/%m/%Y', errors='coerce'))
