@@ -18,8 +18,8 @@ except ImportError:
 st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 
 USUARIOS = st.secrets["passwords"]
-ADMINISTRADOR = "Ricardo Ippolito"
-TECNICOS = ["Aldana Rodriguez Masin", "Martin Eduardo Luna"]
+ADMINISTRADORES = ["Ricardo Ippolito", "Aldana Rodriguez Masin"]
+TECNICOS = ["Martin Eduardo Luna"]
 
 GSHEET_URL = st.secrets.get("SHEET_URL", "")
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -205,6 +205,7 @@ if not st.session_state.autenticado:
     st.stop()
 
 es_tecnico = st.session_state.usuario_actual in TECNICOS
+es_admin = st.session_state.usuario_actual in ADMINISTRADORES
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -213,9 +214,9 @@ with st.sidebar:
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p><br>", unsafe_allow_html=True) 
     if es_tecnico: opciones_menu = ["Soporte", "Calendario"]; iconos_menu = ["headset", "calendar-date"]
     else: opciones_menu = ["Dashboard", "Soporte", "Potenciales", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario", "Catálogo de Productos"]; iconos_menu = ["bar-chart-line", "headset", "person-bounding-box", "kanban", "briefcase", "person-plus", "calendar-date", "box-seam"]
-    section = option_menu(None, opciones_menu, icons=iconos_menu, default_index=0 if es_tecnico else 4, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
+    section = option_menu(None, opciones_menu, icons=iconos_menu, default_index=0 if es_tecnico else 3, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
     st.markdown("---")
-    rol_badge = '🛠️ Técnico' if es_tecnico else ('👑 Admin' if st.session_state.usuario_actual == ADMINISTRADOR else '💼 Asesor')
+    rol_badge = '🛠️ Técnico' if es_tecnico else ('👑 Admin' if es_admin else '💼 Asesor')
     st.markdown(f"<div style='text-align: center; color: white; font-size: 14px; margin-bottom: 10px;'>{rol_badge}: <b>{st.session_state.usuario_actual}</b></div>", unsafe_allow_html=True)
     if st.button("🚪 Cerrar Sesión", use_container_width=True): st.session_state.autenticado = False; st.session_state.usuario_actual = None; st.rerun()
 
@@ -384,7 +385,7 @@ elif section == "Soporte":
                         if st.button("✅ Desagendar Llamada", key=f"ok_soporte_{idx}", use_container_width=True):
                             df_u = get_data_main(); df_u.at[idx, 'Proxima llamada'] = ""; df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ✅ Llamada de soporte completada."; guardar_datos(df_u); st.rerun()
                 
-                if st.session_state.usuario_actual == ADMINISTRADOR:
+                if es_admin:
                     st.markdown("---")
                     st.markdown("### 🔄 Reasignar Asesor (Admin)")
                     c_rs1, c_rs2 = st.columns([3, 1])
@@ -402,7 +403,7 @@ elif section == "Soporte":
 # --- CATÁLOGO ---
 elif section == "Catálogo de Productos":
     st.markdown("## 📦 Catálogo Central de Productos")
-    if st.session_state.usuario_actual == ADMINISTRADOR:
+    if es_admin:
         with st.expander("➕ Cargar Nuevo Producto al Catálogo", expanded=False):
             with st.form("form_nuevo_prod"):
                 c1, c2 = st.columns([2, 3]); prod_nombre = c1.text_input("Nombre del Producto / Módulo *"); prod_desc = c2.text_input("Descripción breve (Qué incluye)")
@@ -447,7 +448,7 @@ elif section == "Agregar Cliente":
     with cc1: px_l = st.date_input("Próxima llamada", key=f"px_{fk}")
     with cc2: px_h = st.time_input("Hora de llamada", value=datetime.strptime("10:00", "%H:%M").time(), key=f"pxh_{fk}")
     with cc3: cot = st.text_input("N° Cotiz (Vacío=Auto)", key=f"co_{fk}")
-    ase = st.selectbox("Asesor Asignado", list(USUARIOS.keys()), index=list(USUARIOS.keys()).index(st.session_state.usuario_actual) if st.session_state.usuario_actual in USUARIOS else 0, key=f"as_{fk}") if st.session_state.usuario_actual == ADMINISTRADOR else st.session_state.usuario_actual
+    ase = st.selectbox("Asesor Asignado", list(USUARIOS.keys()), index=list(USUARIOS.keys()).index(st.session_state.usuario_actual) if st.session_state.usuario_actual in USUARIOS else 0, key=f"as_{fk}") if es_admin else st.session_state.usuario_actual
     monto_final, prods_final, desc_final = "", "", ""
     if "Negociación" in tipo:
         st.markdown("---"); monto_final, prods_final, desc_final = modulo_calculadora(f"add_{fk}")
@@ -471,7 +472,7 @@ elif section == "Agregar Cliente":
 elif section == "Negociaciones":
     st.markdown("## :card_index_dividers: Negociaciones Activas")
     df_nego = df[(df['Estado_Nego'] != 'Potencial') & (df['Estado_Nego'] != '') & (df['Estado_Nego'] != 'Descartada')]
-    if st.session_state.usuario_actual == ADMINISTRADOR:
+    if es_admin:
         c1, c2, c3 = st.columns(3)
         c1.metric("💰 Total USD", f"USD {sum(limpiar_monto_para_suma(x) for x in df_nego['Monto USD / $'] if 'ARS' not in str(x).upper()):,.0f}")
         c2.metric("💵 Total ARS", f"ARS {sum(limpiar_monto_para_suma(x) for x in df_nego['Monto USD / $'] if 'ARS' in str(x).upper()):,.0f}")
@@ -479,12 +480,7 @@ elif section == "Negociaciones":
         st.markdown("---")
     asesor_sel = st.selectbox("Seleccionar Asesor:", lista_asesores, index=index_inicio)
     df_tab = df_nego if asesor_sel == "Todos los Asesores" else df_nego[df_nego['Asesor'] == asesor_sel]
-    
-    busq = st.text_input("🔍 Buscar Cliente/Empresa/Email:")
-    if busq:
-        cond_n = (df_tab['Cliente'].astype(str).str.contains(busq, case=False, na=False) | df_tab['Empresa'].astype(str).str.contains(busq, case=False, na=False) | df_tab['Email'].astype(str).str.contains(busq, case=False, na=False))
-        df_f = df_tab[cond_n]
-    else: df_f = df_tab
+    busq = st.text_input("🔍 Buscar Cliente/Empresa:"); df_f = df_tab[df_tab['Cliente'].astype(str).str.contains(busq, case=False) | df_tab['Empresa'].astype(str).str.contains(busq, case=False)] if busq else df_tab
 
     for idx, row in df_f.iterrows():
         est = row.get('Estado_Nego', 'En Proceso'); color = "#28a745" if est == 'Ganada' else "#dc3545" if est == 'Perdida' else "#ffc107"
@@ -499,7 +495,7 @@ elif section == "Negociaciones":
         st.markdown(f"<div style='background:white;padding:1.3em;border-radius:12px;margin-bottom:0.6em;box-shadow:0 1px 8px #d0d6e1;border-left:6px solid {color};color:black; overflow:hidden;'><div style='float:right; text-align:right;'><span style='background:{color};color:white;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold; display:inline-block;'>{est.upper()}</span>{badge_fecha}</div><b>Nego:</b> <span style='color:#FF6600;font-weight:bold;'>{nego_codigo}</span> | <b>Cliente:</b> {row.get('Cliente', '')}{badge_cli}<br><b>Monto:</b> <span style='color:#2261b6;font-weight:bold;'>{row.get('Monto USD / $', '')}</span> | <small>📦 {texto_prods}</small></div>", unsafe_allow_html=True)
         
         with st.expander("Ver Ficha Completa"):
-            puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
+            puede = es_admin or (st.session_state.usuario_actual == row.get('Asesor', ''))
             
             col1, col2 = st.columns(2)
             with col1: st.write(f"**Prof:** {row.get('Profesion','')} | **Cargo:** {row.get('Cargo','')}"); st.write(f"**Tel:** {row.get('Telefono','')}"); st.write(f"**Email:** {row.get('Email','')}")
@@ -563,7 +559,7 @@ elif section == "Negociaciones":
                     if cg.button("✅ CERRADA GANADA", key=f"g_{idx}", use_container_width=True): df_g = get_data_main(); df_g.at[idx, 'Estado_Nego'] = "Ganada"; df_g.at[idx, 'Notas'] = str(df_g.at[idx,'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🏆 CERRADA GANADA"; guardar_datos(df_g); st.rerun()
                     if cp.button("❌ CERRADA PERDIDA", key=f"p_{idx}", use_container_width=True): df_p = get_data_main(); df_p.at[idx, 'Estado_Nego'] = "Perdida"; df_p.at[idx, 'Notas'] = str(df_p.at[idx,'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ❌ CERRADA PERDIDA"; guardar_datos(df_p); st.rerun()
 
-            if st.session_state.usuario_actual == ADMINISTRADOR:
+            if es_admin:
                 st.markdown("---")
                 st.markdown("### 🔄 Reasignar Asesor (Admin)")
                 c_rn1, c_rn2 = st.columns([3, 1])
@@ -591,7 +587,7 @@ elif section == "Potenciales":
     st.metric("Total de Leads", len(df_pot)); st.markdown("---")
 
     for idx, row in df_pot.iterrows():
-        puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', ''))
+        puede = es_admin or (st.session_state.usuario_actual == row.get('Asesor', ''))
         
         es_cli = str(row.get('Cliente', '')).strip() in clientes_actuales
         badge_cli = "<span style='background:#0d6efd;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:5px;vertical-align:middle;'>⭐ CLIENTE</span>" if es_cli else ""
@@ -624,7 +620,7 @@ elif section == "Potenciales":
                     if not str(df_a.at[idx, 'N° Nego']).strip() or str(df_a.at[idx, 'N° Nego']) == 'nan': df_a.at[idx, 'N° Nego'] = generar_numero_negociacion(df_a)
                     guardar_datos(df_a); st.rerun()
 
-            if st.session_state.usuario_actual == ADMINISTRADOR:
+            if es_admin:
                 st.markdown("---")
                 st.markdown("### 🔄 Reasignar Asesor (Admin)")
                 c_rp1, c_rp2 = st.columns([3, 1])
@@ -652,7 +648,7 @@ elif section == "Pipeline":
             tot_usd = sum(limpiar_monto_para_suma(x) for x in df_col['Monto USD / $'] if 'ARS' not in str(x).upper()); color_header = "#6c757d" if estado=="Potencial" else "#ffc107" if estado=="En Proceso" else "#28a745" if estado=="Ganada" else "#dc3545"
             st.markdown(f"<div style='background-color:{color_header}; color:white; padding:10px; border-radius:5px; text-align:center; font-weight:bold; margin-bottom:15px;'>{estado.upper()} ({len(df_col)})<br>USD {tot_usd:,.0f}</div>", unsafe_allow_html=True)
             for idx, row in df_col.iterrows():
-                puede = (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == row.get('Asesor', '')); nego_codigo = str(row.get('N° Nego', '')).strip(); nego_codigo = nego_codigo if (nego_codigo and nego_codigo != 'nan') else "S/N"
+                puede = es_admin or (st.session_state.usuario_actual == row.get('Asesor', '')); nego_codigo = str(row.get('N° Nego', '')).strip(); nego_codigo = nego_codigo if (nego_codigo and nego_codigo != 'nan') else "S/N"
                 
                 es_cli = str(row.get('Cliente', '')).strip() in clientes_actuales
                 badge_cli = "<span style='background:#0d6efd;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:5px;vertical-align:middle;'>⭐ CLIENTE</span>" if es_cli else ""
@@ -685,7 +681,7 @@ elif section == "Calendario":
             badge_cli = "<span style='background:#0d6efd;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:5px;vertical-align:middle;'>⭐ CLIENTE</span>" if es_cli else ""
             
             st.markdown(f'<div style="background:#2E3E57;padding:15px;border-radius:10px;margin-bottom:10px;border-left:5px solid #FF6600;"><h4 style="color:white;margin:0;">📅 {r["Proxima llamada"]} | {r["Cliente"]} {badge_cli}</h4><p style="color:#d0d6e1;margin:5px 0;">📞 {r["Telefono"]} | 👔 {r["Asesor"]}</p></div>', unsafe_allow_html=True)
-            if (st.session_state.usuario_actual == ADMINISTRADOR) or (st.session_state.usuario_actual == r.get('Asesor', '')) or es_tecnico:
+            if es_admin or (st.session_state.usuario_actual == r.get('Asesor', '')) or es_tecnico:
                 c1, c2, c3 = st.columns(3)
                 with c1:
                     with st.expander("⚙️ Reprogramar Contacto"):
