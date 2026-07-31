@@ -214,7 +214,7 @@ with st.sidebar:
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p><br>", unsafe_allow_html=True) 
     if es_tecnico: opciones_menu = ["Soporte", "Calendario"]; iconos_menu = ["headset", "calendar-date"]
     else: opciones_menu = ["Dashboard", "Soporte", "Potenciales", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario", "Catálogo de Productos"]; iconos_menu = ["bar-chart-line", "headset", "person-bounding-box", "kanban", "briefcase", "person-plus", "calendar-date", "box-seam"]
-    section = option_menu(None, opciones_menu, icons=iconos_menu, default_index=0 if es_tecnico else 3, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
+    section = option_menu(None, opciones_menu, icons=iconos_menu, default_index=0 if es_tecnico else 4, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
     st.markdown("---")
     rol_badge = '🛠️ Técnico' if es_tecnico else ('👑 Admin' if es_admin else '💼 Asesor')
     st.markdown(f"<div style='text-align: center; color: white; font-size: 14px; margin-bottom: 10px;'>{rol_badge}: <b>{st.session_state.usuario_actual}</b></div>", unsafe_allow_html=True)
@@ -315,14 +315,13 @@ elif section == "Soporte":
                     if st.button("✅ Marcar como Resuelto", key=f"btn_res_{idx_t}", type="primary"):
                         if not resolucion.strip(): st.error("Debe escribir una resolución para cerrar el ticket.")
                         else:
-                            df_upd_t = get_data_tickets()
-                            df_upd_t.at[idx_t, 'Estado'] = 'Resuelto'
-                            df_upd_t.at[idx_t, 'Resolucion'] = resolucion
-                            df_upd_t.at[idx_t, 'Tecnico'] = st.session_state.usuario_actual
-                            guardar_datos(df_upd_t, "Tickets")
-                            st.success("✅ Ticket cerrado exitosamente.")
-                            time.sleep(1.5)
-                            st.rerun()
+                            with st.spinner("Cerrando ticket..."):
+                                df_upd_t = get_data_tickets()
+                                df_upd_t.at[idx_t, 'Estado'] = 'Resuelto'
+                                df_upd_t.at[idx_t, 'Resolucion'] = resolucion
+                                df_upd_t.at[idx_t, 'Tecnico'] = st.session_state.usuario_actual
+                                guardar_datos(df_upd_t, "Tickets")
+                                st.rerun()
         
         st.markdown("---")
         st.markdown("### 🟢 Tickets Resueltos")
@@ -358,17 +357,17 @@ elif section == "Soporte":
                     if st.button("➕ Generar Ticket", key=f"btn_gen_tkt_{idx}", type="primary"):
                         if not asunto_ticket.strip(): st.warning("Escriba el asunto del ticket.")
                         else:
-                            df_t = get_data_tickets()
-                            num_tkt = generar_numero_ticket(df_t)
-                            nuevo_tkt = pd.DataFrame([{
-                                "N° Ticket": num_tkt, "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                                "Cliente": row.get('Cliente', ''), "Empresa": row.get('Empresa', ''),
-                                "Asunto": asunto_ticket, "Estado": "Abierto", "Resolucion": "", "Tecnico": ""
-                            }])
-                            guardar_datos(pd.concat([df_t, nuevo_tkt], ignore_index=True), "Tickets")
-                            st.success(f"✅ ¡Éxito! Ticket {num_tkt} creado. Revisá el Panel de Tickets.")
-                            time.sleep(1.5)
-                            st.rerun()
+                            with st.spinner("Creando ticket..."):
+                                df_t = get_data_tickets()
+                                num_tkt = generar_numero_ticket(df_t)
+                                nuevo_tkt = pd.DataFrame([{
+                                    "N° Ticket": num_tkt, "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                    "Cliente": row.get('Cliente', ''), "Empresa": row.get('Empresa', ''),
+                                    "Asunto": asunto_ticket, "Estado": "Abierto", "Resolucion": "", "Tecnico": ""
+                                }])
+                                guardar_datos(pd.concat([df_t, nuevo_tkt], ignore_index=True), "Tickets")
+                                time.sleep(1)
+                                st.rerun()
                 
                 with c_tabs2:
                     st.info(f"**Historial Completo:**\n{row.get('Notas', 'Sin notas.')}")
@@ -380,10 +379,13 @@ elif section == "Soporte":
                     with c_n3: 
                         st.markdown("<br>", unsafe_allow_html=True)
                         if st.button("💾 Guardar Nota", key=f"b_s_{idx}", use_container_width=True): 
-                            nota_final = f"🛠️ [SOPORTE]: {n_n}" if n_n else ""
-                            guardar_gestion(idx, row.get('Notas',''), nota_final, f"{n_f.strftime('%d/%m/%Y')} {n_h.strftime('%H:%M')}", row.get('Proxima llamada','')); st.rerun()
+                            with st.spinner("Guardando nota..."):
+                                nota_final = f"🛠️ [SOPORTE]: {n_n}" if n_n else ""
+                                guardar_gestion(idx, row.get('Notas',''), nota_final, f"{n_f.strftime('%d/%m/%Y')} {n_h.strftime('%H:%M')}", row.get('Proxima llamada',''))
+                                st.rerun()
                         if st.button("✅ Desagendar Llamada", key=f"ok_soporte_{idx}", use_container_width=True):
-                            df_u = get_data_main(); df_u.at[idx, 'Proxima llamada'] = ""; df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ✅ Llamada de soporte completada."; guardar_datos(df_u); st.rerun()
+                            with st.spinner("Actualizando agenda..."):
+                                df_u = get_data_main(); df_u.at[idx, 'Proxima llamada'] = ""; df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ✅ Llamada de soporte completada."; guardar_datos(df_u); st.rerun()
                 
                 if es_admin:
                     st.markdown("---")
@@ -395,10 +397,12 @@ elif section == "Soporte":
                     nuevo_as = c_rs1.selectbox("Asignar a:", asesores_list, index=idx_asesor, key=f"reasig_s_{idx}")
                     if c_rs2.button("🔁 Reasignar", key=f"btn_reasig_s_{idx}", use_container_width=True):
                         if nuevo_as != asesor_actual:
-                            df_u = get_data_main()
-                            df_u.at[idx, 'Asesor'] = nuevo_as
-                            df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🔄 Admin reasignó contacto de {asesor_actual} a {nuevo_as}."
-                            guardar_datos(df_u); st.rerun()
+                            with st.spinner("Reasignando contacto..."):
+                                df_u = get_data_main()
+                                df_u.at[idx, 'Asesor'] = nuevo_as
+                                df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🔄 Admin reasignó contacto de {asesor_actual} a {nuevo_as}."
+                                guardar_datos(df_u)
+                                st.rerun()
 
 # --- CATÁLOGO ---
 elif section == "Catálogo de Productos":
@@ -431,10 +435,12 @@ elif section == "Agregar Cliente":
     c1, c2 = st.columns(2)
     with c1:
         cli = st.text_input("Nombre del Cliente *", key=f"c_{fk}"); emp = st.text_input("Empresa", key=f"e_{fk}")
-        p_s = st.selectbox("País", CODIGOS_PAISES, key=f"p_{fk}"); ciu = st.text_input("Ciudad", key=f"ci_{fk}")
+        p_s = st.selectbox("País", CODIGOS_PAISES, key=f"p_{fk}"); est_prov = st.text_input("Estado / Provincia", key=f"est_{fk}")
+        ciu = st.text_input("Ciudad", key=f"ci_{fk}")
     with c2:
         prof = st.text_input("Profesión", key=f"pr_{fk}"); car = st.text_input("Cargo", key=f"ca_{fk}")
-        tel = st.text_input("Teléfono (Sin código)", key=f"te_{fk}"); eml = st.text_input("Email", key=f"em_{fk}")
+        dir_pos = st.text_input("Dirección", key=f"dir_{fk}"); tel = st.text_input("Teléfono (Sin código)", key=f"te_{fk}")
+        eml = st.text_input("Email", key=f"em_{fk}")
     st.markdown("---")
     p_f, c_f = extraer_pais_codigo(p_s); tel_f = f"{c_f} {tel}" if (tel.strip() and not tel.startswith("+") and c_f) else tel
     em_l = eml.strip().lower(); te_l = tel_f.replace(" ","").replace("+","").replace("-","")
@@ -458,15 +464,15 @@ elif section == "Agregar Cliente":
     if st.button("💾 GUARDAR CLIENTE EN CRM", type="primary", use_container_width=True):
         if not cli.strip(): st.warning("El nombre del cliente es obligatorio.")
         else:
-            with st.spinner("Guardando..."):
+            with st.spinner("Guardando cliente nuevo..."):
                 if any((em_l and str(r['Email']).lower().strip() == em_l) or (te_l and str(r['Telefono']).replace(" ","").replace("+","").replace("-","") == te_l) for _, r in df.iterrows()):
                     st.error(f"🚨 ¡CLIENTE EXISTENTE! Buscalo en Negociaciones/Potenciales.")
                 else:
                     est_i = "Potencial" if "Potencial" in tipo else "En Proceso"
                     cot_f = cot.strip() if cot.strip() else (generar_numero_cotizacion(df) if est_i == "En Proceso" else "")
                     fh_str = f"{px_l.strftime('%d/%m/%Y')} {px_h.strftime('%H:%M')}"
-                    new = pd.DataFrame([{"N° Nego": generar_numero_negociacion(df), "Creado": datetime.now().strftime("%d/%m/%Y"), "Cliente": cli, "Profesion": prof, "Pais": p_f, "Ciudad": ciu, "Empresa": emp, "Cargo": car, "Telefono": tel_f, "Email": eml, "N° Cotiz.": cot_f, "Monto USD / $": monto_final, "Notas": f"[{datetime.now().strftime('%d/%m/%Y')}] 📝 {n_i}" if n_i else "", "Proxima llamada": fh_str, "Asesor": ase, "Estado_Nego": est_i, "Link_PDF": l_p, "Productos Seleccionados": prods_final, "Descuento Aplicado": desc_final}])
-                    guardar_datos(pd.concat([df, new], ignore_index=True)); st.session_state.f_k += 1; st.success("Guardado!"); st.rerun()
+                    new = pd.DataFrame([{"N° Nego": generar_numero_negociacion(df), "Creado": datetime.now().strftime("%d/%m/%Y"), "Cliente": cli, "Profesion": prof, "Direccion": dir_pos, "Estado /Prov.": est_prov, "Pais": p_f, "Ciudad": ciu, "Empresa": emp, "Cargo": car, "Telefono": tel_f, "Email": eml, "N° Cotiz.": cot_f, "Monto USD / $": monto_final, "Notas": f"[{datetime.now().strftime('%d/%m/%Y')}] 📝 {n_i}" if n_i else "", "Proxima llamada": fh_str, "Asesor": ase, "Estado_Nego": est_i, "Link_PDF": l_p, "Productos Seleccionados": prods_final, "Descuento Aplicado": desc_final}])
+                    guardar_datos(pd.concat([df, new], ignore_index=True)); st.session_state.f_k += 1; st.success("Guardado!"); time.sleep(1); st.rerun()
 
 # --- NEGOCIACIONES ---
 elif section == "Negociaciones":
@@ -480,7 +486,12 @@ elif section == "Negociaciones":
         st.markdown("---")
     asesor_sel = st.selectbox("Seleccionar Asesor:", lista_asesores, index=index_inicio)
     df_tab = df_nego if asesor_sel == "Todos los Asesores" else df_nego[df_nego['Asesor'] == asesor_sel]
-    busq = st.text_input("🔍 Buscar Cliente/Empresa:"); df_f = df_tab[df_tab['Cliente'].astype(str).str.contains(busq, case=False) | df_tab['Empresa'].astype(str).str.contains(busq, case=False)] if busq else df_tab
+    
+    busq = st.text_input("🔍 Buscar Cliente/Empresa/Email:")
+    if busq:
+        cond_n = (df_tab['Cliente'].astype(str).str.contains(busq, case=False, na=False) | df_tab['Empresa'].astype(str).str.contains(busq, case=False, na=False) | df_tab['Email'].astype(str).str.contains(busq, case=False, na=False))
+        df_f = df_tab[cond_n]
+    else: df_f = df_tab
 
     for idx, row in df_f.iterrows():
         est = row.get('Estado_Nego', 'En Proceso'); color = "#28a745" if est == 'Ganada' else "#dc3545" if est == 'Perdida' else "#ffc107"
@@ -498,8 +509,8 @@ elif section == "Negociaciones":
             puede = es_admin or (st.session_state.usuario_actual == row.get('Asesor', ''))
             
             col1, col2 = st.columns(2)
-            with col1: st.write(f"**Prof:** {row.get('Profesion','')} | **Cargo:** {row.get('Cargo','')}"); st.write(f"**Tel:** {row.get('Telefono','')}"); st.write(f"**Email:** {row.get('Email','')}")
-            with col2: st.write(f"**Empresa:** {row.get('Empresa','')}"); st.write(f"**Cotiz:** {row.get('N° Cotiz.','')}"); st.write(f"**Asesor:** {row.get('Asesor','')}")
+            with col1: st.write(f"**Prof:** {row.get('Profesion','')} | **Cargo:** {row.get('Cargo','')}"); st.write(f"**Tel:** {row.get('Telefono','')} | **Email:** {row.get('Email','')}")
+            with col2: st.write(f"**Empresa:** {row.get('Empresa','')}"); st.write(f"**Dir:** {row.get('Direccion','')} | **Est/Prov:** {row.get('Estado /Prov.','')}"); st.write(f"**Cotiz:** {row.get('N° Cotiz.','')} | **Asesor:** {row.get('Asesor','')}")
             if row.get('Link_PDF'): st.link_button("📄 Ver Presupuesto Subido (Nube)", row['Link_PDF'], use_container_width=True)
             st.markdown("---")
 
@@ -509,15 +520,16 @@ elif section == "Negociaciones":
                     with c_e1: 
                         ec = st.text_input("Nombre", row.get('Cliente',''), key=f"ecn_{idx}"); ee = st.text_input("Empresa", row.get('Empresa',''), key=f"een_{idx}")
                         e_prof = st.text_input("Profesión", row.get('Profesion',''), key=f"eprn_{idx}"); e_cargo = st.text_input("Cargo", row.get('Cargo',''), key=f"ecrn_{idx}")
-                        edm = st.text_input("Corrección Manual Monto Final", row.get('Monto USD / $',''), key=f"edm_{idx}")
+                        e_dir = st.text_input("Dirección", row.get('Direccion',''), key=f"edirn_{idx}"); edm = st.text_input("Corrección Manual Monto Final", row.get('Monto USD / $',''), key=f"edm_{idx}")
                     with c_e2:
                         idx_pa = next((i for i, p in enumerate(CODIGOS_PAISES) if str(row.get('Pais','')).lower() in p.lower() and row.get('Pais','') != ""), 0)
-                        ep = st.selectbox("País", CODIGOS_PAISES, index=idx_pa, key=f"epn_{idx}"); e_ciu = st.text_input("Ciudad", row.get('Ciudad',''), key=f"eciun_{idx}")
-                        em = st.text_input("Email", row.get('Email',''), key=f"emn_{idx}"); etel = st.text_input("Teléfono", row.get('Telefono',''), key=f"eteln_{idx}")
-                        edl = st.text_input("Corrección Link PDF", row.get('Link_PDF',''), key=f"edl_{idx}")
+                        ep = st.selectbox("País", CODIGOS_PAISES, index=idx_pa, key=f"epn_{idx}"); e_est = st.text_input("Estado / Provincia", row.get('Estado /Prov.',''), key=f"eestn_{idx}")
+                        e_ciu = st.text_input("Ciudad", row.get('Ciudad',''), key=f"eciun_{idx}"); em = st.text_input("Email", row.get('Email',''), key=f"emn_{idx}")
+                        etel = st.text_input("Teléfono", row.get('Telefono',''), key=f"eteln_{idx}"); edl = st.text_input("Corrección Link PDF", row.get('Link_PDF',''), key=f"edl_{idx}")
                     if st.button("💾 Actualizar Todo", key=f"becn_{idx}", type="primary"):
-                        p_n, c_n = extraer_pais_codigo(ep); tel_f = f"{c_n} {etel}" if (etel.strip() and not etel.startswith("+") and c_n) else etel
-                        df_u = get_data_main(); df_u.loc[idx, ['Cliente','Empresa','Profesion','Cargo','Pais','Ciudad','Email','Telefono', 'Monto USD / $', 'Link_PDF']] = [ec, ee, e_prof, e_cargo, p_n, e_ciu, em, tel_f, edm, edl]; guardar_datos(df_u); st.rerun()
+                        with st.spinner("Actualizando cliente..."):
+                            p_n, c_n = extraer_pais_codigo(ep); tel_f = f"{c_n} {etel}" if (etel.strip() and not etel.startswith("+") and c_n) else etel
+                            df_u = get_data_main(); df_u.loc[idx, ['Cliente','Empresa','Profesion','Cargo','Direccion','Estado /Prov.','Pais','Ciudad','Email','Telefono', 'Monto USD / $', 'Link_PDF']] = [ec, ee, e_prof, e_cargo, e_dir, e_est, p_n, e_ciu, em, tel_f, edm, edl]; guardar_datos(df_u); st.rerun()
 
                 st.markdown("### 📄 Generar Presupuesto Excel")
                 c_wd1, c_wd2 = st.columns([2, 1]); obs_excel = c_wd1.text_area("Observaciones:", key=f"obs_e_{idx}"); tipo_p = c_wd2.radio("Impuestos:", ["Argentina (IVA 21%)", "Internacional (Gasto Adm 5%)"], key=f"tpl_{idx}")
@@ -531,33 +543,46 @@ elif section == "Negociaciones":
                 m_f, p_f, d_f = modulo_calculadora(f"nc_{idx}"); c_nc1, c_nc2 = st.columns(2); ncc = c_nc1.text_input("N° Cotiz (Vacío=Mantener)", key=f"ncc_{idx}"); ncp = c_nc2.text_input("Link al PDF", key=f"ncp_{idx}")
                 col_btn1, col_btn2, col_btn3 = st.columns(3)
                 if col_btn1.button("🔄 Sobrescribir Actual", key=f"bnc_upd_{idx}", type="primary", use_container_width=True):
-                    df_n = get_data_main(); f_h = datetime.now().strftime("%d/%m/%Y"); target_idx = df_n[df_n['N° Cotiz.'] == row['N° Cotiz.']].index
-                    if not target_idx.empty:
-                        ti = target_idx[0]
-                        if not str(df_n.at[ti, 'N° Nego']).strip() or str(df_n.at[ti, 'N° Nego']) == 'nan': df_n.at[ti, 'N° Nego'] = generar_numero_negociacion(df_n)
-                        df_n.at[ti, 'N° Cotiz.'] = ncc if ncc else row['N° Cotiz.']; df_n.at[ti, 'Monto USD / $'] = m_f; df_n.at[ti, 'Link_PDF'] = ncp if ncp else row['Link_PDF']; df_n.at[ti, 'Productos Seleccionados'] = p_f; df_n.at[ti, 'Descuento Aplicado'] = d_f; df_n.at[ti, 'Notas'] = str(df_n.at[ti, 'Notas']) + f"\n[{f_h}] 🔄 Cotización actualizada a {m_f}."
-                        guardar_datos(df_n); st.rerun()
+                    with st.spinner("Actualizando cotización..."):
+                        df_n = get_data_main(); f_h = datetime.now().strftime("%d/%m/%Y"); target_idx = df_n[df_n['N° Cotiz.'] == row['N° Cotiz.']].index
+                        if not target_idx.empty:
+                            ti = target_idx[0]
+                            if not str(df_n.at[ti, 'N° Nego']).strip() or str(df_n.at[ti, 'N° Nego']) == 'nan': df_n.at[ti, 'N° Nego'] = generar_numero_negociacion(df_n)
+                            df_n.at[ti, 'N° Cotiz.'] = ncc if ncc else row['N° Cotiz.']; df_n.at[ti, 'Monto USD / $'] = m_f; df_n.at[ti, 'Link_PDF'] = ncp if ncp else row['Link_PDF']; df_n.at[ti, 'Productos Seleccionados'] = p_f; df_n.at[ti, 'Descuento Aplicado'] = d_f; df_n.at[ti, 'Notas'] = str(df_n.at[ti, 'Notas']) + f"\n[{f_h}] 🔄 Cotización actualizada a {m_f}."
+                            guardar_datos(df_n); st.rerun()
                 if col_btn2.button("➕ Crear Alternativa", key=f"bnc_alt_{idx}", use_container_width=True):
-                    df_n = get_data_main(); f_h = datetime.now().strftime("%d/%m/%Y"); id_p = str(row.get('N° Nego', '')).strip()
-                    if not id_p or id_p == 'nan': id_p = generar_numero_negociacion(df_n)
-                    new_r = pd.DataFrame([{"N° Nego": id_p, "Creado": f_h, "Cliente": row['Cliente'], "Empresa": row['Empresa'], "Profesion": row['Profesion'], "Cargo": row['Cargo'], "Pais": row['Pais'], "Ciudad": row['Ciudad'], "Telefono": row['Telefono'], "Email": row['Email'], "N° Cotiz.": ncc if ncc else generar_numero_cotizacion(df_n), "Monto USD / $": m_f, "Asesor": row['Asesor'], "Estado_Nego": "En Proceso", "Link_PDF": ncp, "Productos Seleccionados": p_f, "Descuento Aplicado": d_f, "Notas": f"[{f_h}] ➕ Alternativa creada.", "Proxima llamada": row.get('Proxima llamada', '')}])
-                    guardar_datos(pd.concat([df_n, new_r], ignore_index=True)); st.rerun()
+                    with st.spinner("Creando alternativa..."):
+                        df_n = get_data_main(); f_h = datetime.now().strftime("%d/%m/%Y"); id_p = str(row.get('N° Nego', '')).strip()
+                        if not id_p or id_p == 'nan': id_p = generar_numero_negociacion(df_n)
+                        new_r = pd.DataFrame([{"N° Nego": id_p, "Creado": f_h, "Cliente": row['Cliente'], "Empresa": row['Empresa'], "Profesion": row['Profesion'], "Direccion": row['Direccion'], "Estado /Prov.": row['Estado /Prov.'], "Cargo": row['Cargo'], "Pais": row['Pais'], "Ciudad": row['Ciudad'], "Telefono": row['Telefono'], "Email": row['Email'], "N° Cotiz.": ncc if ncc else generar_numero_cotizacion(df_n), "Monto USD / $": m_f, "Asesor": row['Asesor'], "Estado_Nego": "En Proceso", "Link_PDF": ncp, "Productos Seleccionados": p_f, "Descuento Aplicado": d_f, "Notas": f"[{f_h}] ➕ Alternativa creada.", "Proxima llamada": row.get('Proxima llamada', '')}])
+                        guardar_datos(pd.concat([df_n, new_r], ignore_index=True)); st.rerun()
                 if col_btn3.button("🗑️ Anular Opción", key=f"desc_{idx}", use_container_width=True):
-                    df_n = get_data_main(); target_idx = df_n[df_n['N° Cotiz.'] == row['N° Cotiz.']].index
-                    if not target_idx.empty: df_n.at[target_idx[0], 'Estado_Nego'] = "Descartada"; guardar_datos(df_n); st.rerun()
+                    with st.spinner("Anulando cotización..."):
+                        df_n = get_data_main(); target_idx = df_n[df_n['N° Cotiz.'] == row['N° Cotiz.']].index
+                        if not target_idx.empty: df_n.at[target_idx[0], 'Estado_Nego'] = "Descartada"; guardar_datos(df_n); st.rerun()
 
             st.markdown("---"); st.markdown("**📝 Seguimiento:**"); st.info(f"**Historial:**\n{row.get('Notas', 'Sin notas.')}")
             if puede:
                 cn1, cn2, cn3 = st.columns([1.5, 2, 1.5]); f_o, h_o = parsear_fecha_hora(row.get('Proxima llamada', '')); nf = cn1.date_input("Día", value=f_o, key=f"fgn_{idx}"); nh = cn1.time_input("Hora", value=h_o, key=f"hgn_{idx}"); nn = cn2.text_input("Nueva nota", key=f"ngn_{idx}")
-                if cn3.button("💾 Guardar", key=f"bgn_{idx}", use_container_width=True): guardar_gestion(idx, row.get('Notas',''), nn, f"{nf.strftime('%d/%m/%Y')} {nh.strftime('%H:%M')}", row.get('Proxima llamada','')); st.rerun()
-                if cn3.button("✅ Llamada OK", key=f"ok_nego_{idx}", use_container_width=True): df_n = get_data_main(); df_n.at[idx, 'Proxima llamada'] = ""; df_n.at[idx, 'Notas'] = str(df_n.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ✅ Llamada OK."; guardar_datos(df_n); st.rerun()
+                if cn3.button("💾 Guardar", key=f"bgn_{idx}", use_container_width=True): 
+                    with st.spinner("Guardando..."):
+                        guardar_gestion(idx, row.get('Notas',''), nn, f"{nf.strftime('%d/%m/%Y')} {nh.strftime('%H:%M')}", row.get('Proxima llamada','')); st.rerun()
+                if cn3.button("✅ Llamada OK", key=f"ok_nego_{idx}", use_container_width=True): 
+                    with st.spinner("Registrando..."):
+                        df_n = get_data_main(); df_n.at[idx, 'Proxima llamada'] = ""; df_n.at[idx, 'Notas'] = str(df_n.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ✅ Llamada OK."; guardar_datos(df_n); st.rerun()
                 st.markdown("---")
                 if est in ['Ganada','Perdida']:
-                    if st.button("🔄 Reabrir Negociación", key=f"re_{idx}"): df_r = get_data_main(); df_r.at[idx, 'Estado_Nego'] = "En Proceso"; guardar_datos(df_r); st.rerun()
+                    if st.button("🔄 Reabrir Negociación", key=f"re_{idx}"): 
+                        with st.spinner("Reabriendo..."):
+                            df_r = get_data_main(); df_r.at[idx, 'Estado_Nego'] = "En Proceso"; guardar_datos(df_r); st.rerun()
                 else:
                     cg, cp = st.columns(2)
-                    if cg.button("✅ CERRADA GANADA", key=f"g_{idx}", use_container_width=True): df_g = get_data_main(); df_g.at[idx, 'Estado_Nego'] = "Ganada"; df_g.at[idx, 'Notas'] = str(df_g.at[idx,'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🏆 CERRADA GANADA"; guardar_datos(df_g); st.rerun()
-                    if cp.button("❌ CERRADA PERDIDA", key=f"p_{idx}", use_container_width=True): df_p = get_data_main(); df_p.at[idx, 'Estado_Nego'] = "Perdida"; df_p.at[idx, 'Notas'] = str(df_p.at[idx,'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ❌ CERRADA PERDIDA"; guardar_datos(df_p); st.rerun()
+                    if cg.button("✅ CERRADA GANADA", key=f"g_{idx}", use_container_width=True): 
+                        with st.spinner("Cerrando ganada..."):
+                            df_g = get_data_main(); df_g.at[idx, 'Estado_Nego'] = "Ganada"; df_g.at[idx, 'Notas'] = str(df_g.at[idx,'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🏆 CERRADA GANADA"; guardar_datos(df_g); st.rerun()
+                    if cp.button("❌ CERRADA PERDIDA", key=f"p_{idx}", use_container_width=True): 
+                        with st.spinner("Cerrando perdida..."):
+                            df_p = get_data_main(); df_p.at[idx, 'Estado_Nego'] = "Perdida"; df_p.at[idx, 'Notas'] = str(df_p.at[idx,'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ❌ CERRADA PERDIDA"; guardar_datos(df_p); st.rerun()
 
             if es_admin:
                 st.markdown("---")
@@ -569,10 +594,11 @@ elif section == "Negociaciones":
                 nuevo_as = c_rn1.selectbox("Cambiar asesor a:", asesores_list, index=idx_asesor, key=f"reasig_n_{idx}")
                 if c_rn2.button("🔁 Reasignar", key=f"btn_reasig_n_{idx}", use_container_width=True):
                     if nuevo_as != asesor_actual:
-                        df_u = get_data_main()
-                        df_u.at[idx, 'Asesor'] = nuevo_as
-                        df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🔄 Admin reasignó contacto de {asesor_actual} a {nuevo_as}."
-                        guardar_datos(df_u); st.rerun()
+                        with st.spinner("Reasignando..."):
+                            df_u = get_data_main()
+                            df_u.at[idx, 'Asesor'] = nuevo_as
+                            df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🔄 Admin reasignó contacto de {asesor_actual} a {nuevo_as}."
+                            guardar_datos(df_u); st.rerun()
 
 # --- POTENCIALES ---
 elif section == "Potenciales":
@@ -605,20 +631,27 @@ elif section == "Potenciales":
             if puede:
                 with st.expander("⚙️ Editar Datos del Contacto"):
                     c_ep1, c_ep2 = st.columns(2)
-                    ec_p = c_ep1.text_input("Nombre", row.get('Cliente',''), key=f"ecp_{idx}"); ee_p = c_ep1.text_input("Empresa", row.get('Empresa',''), key=f"eep_{idx}"); eprof_p = c_ep1.text_input("Profesión", row.get('Profesion',''), key=f"eprp_{idx}"); ecargo_p = c_ep1.text_input("Cargo", row.get('Cargo',''), key=f"ecrp_{idx}")
-                    idx_pa_p = next((i for i, p in enumerate(CODIGOS_PAISES) if str(row.get('Pais','')).lower() in p.lower() and row.get('Pais','') != ""), 0); ep_p = c_ep2.selectbox("País", CODIGOS_PAISES, index=idx_pa_p, key=f"epp_{idx}"); eciu_p = c_ep2.text_input("Ciudad", row.get('Ciudad',''), key=f"eciup_{idx}"); em_p = c_ep2.text_input("Email", row.get('Email',''), key=f"emp_{idx}"); etel_p = c_ep2.text_input("Teléfono", row.get('Telefono',''), key=f"etelp_{idx}")
-                    if st.button("💾 Actualizar Datos", key=f"becp_{idx}", type="primary"): pn_p, cn_p = extraer_pais_codigo(ep_p); telf_p = f"{cn_p} {etel_p}" if (etel_p.strip() and not etel_p.startswith("+") and cn_p) else etel_p; df_u = get_data_main(); df_u.loc[idx, ['Cliente','Empresa','Profesion','Cargo','Pais','Ciudad','Email','Telefono']] = [ec_p, ee_p, eprof_p, ecargo_p, pn_p, eciu_p, em_p, telf_p]; guardar_datos(df_u); st.rerun()
+                    ec_p = c_ep1.text_input("Nombre", row.get('Cliente',''), key=f"ecp_{idx}"); ee_p = c_ep1.text_input("Empresa", row.get('Empresa',''), key=f"eep_{idx}"); eprof_p = c_ep1.text_input("Profesión", row.get('Profesion',''), key=f"eprp_{idx}"); ecargo_p = c_ep1.text_input("Cargo", row.get('Cargo',''), key=f"ecrp_{idx}"); edir_p = c_ep1.text_input("Dirección", row.get('Direccion',''), key=f"edirp_{idx}")
+                    idx_pa_p = next((i for i, p in enumerate(CODIGOS_PAISES) if str(row.get('Pais','')).lower() in p.lower() and row.get('Pais','') != ""), 0); ep_p = c_ep2.selectbox("País", CODIGOS_PAISES, index=idx_pa_p, key=f"epp_{idx}"); eest_p = c_ep2.text_input("Estado / Provincia", row.get('Estado /Prov.',''), key=f"eestp_{idx}"); eciu_p = c_ep2.text_input("Ciudad", row.get('Ciudad',''), key=f"eciup_{idx}"); em_p = c_ep2.text_input("Email", row.get('Email',''), key=f"emp_{idx}"); etel_p = c_ep2.text_input("Teléfono", row.get('Telefono',''), key=f"etelp_{idx}")
+                    if st.button("💾 Actualizar Datos", key=f"becp_{idx}", type="primary"): 
+                        with st.spinner("Actualizando datos..."):
+                            pn_p, cn_p = extraer_pais_codigo(ep_p); telf_p = f"{cn_p} {etel_p}" if (etel_p.strip() and not etel_p.startswith("+") and cn_p) else etel_p; df_u = get_data_main(); df_u.loc[idx, ['Cliente','Empresa','Profesion','Cargo','Direccion','Estado /Prov.','Pais','Ciudad','Email','Telefono']] = [ec_p, ee_p, eprof_p, ecargo_p, edir_p, eest_p, pn_p, eciu_p, em_p, telf_p]; guardar_datos(df_u); st.rerun()
                 st.markdown("---")
                 c_n1, c_n2, c_n3 = st.columns([1.5, 2, 1.5]); f_o, h_o = parsear_fecha_hora(row.get('Proxima llamada', '')); n_f = c_n1.date_input("Día", value=f_o, key=f"f_p_{idx}"); n_h = c_n1.time_input("Hora", value=h_o, key=f"h_p_{idx}"); n_n = c_n2.text_input("Nota hoy", key=f"n_p_{idx}")
-                if c_n3.button("💾 Guardar", key=f"b_p_{idx}"): guardar_gestion(idx, row.get('Notas',''), n_n, f"{n_f.strftime('%d/%m/%Y')} {n_h.strftime('%H:%M')}", row.get('Proxima llamada','')); st.rerun()
-                if c_n3.button("✅ Llamada OK", key=f"ok_pot_{idx}", use_container_width=True): df_u = get_data_main(); nota_previa = str(df_u.at[idx, 'Notas']); df_u.at[idx, 'Notas'] = nota_previa + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ✅ Llamada completada."; df_u.at[idx, 'Proxima llamada'] = ""; guardar_datos(df_u); st.rerun()
+                if c_n3.button("💾 Guardar", key=f"b_p_{idx}"): 
+                    with st.spinner("Guardando..."):
+                        guardar_gestion(idx, row.get('Notas',''), n_n, f"{n_f.strftime('%d/%m/%Y')} {n_h.strftime('%H:%M')}", row.get('Proxima llamada','')); st.rerun()
+                if c_n3.button("✅ Llamada OK", key=f"ok_pot_{idx}", use_container_width=True): 
+                    with st.spinner("Registrando..."):
+                        df_u = get_data_main(); nota_previa = str(df_u.at[idx, 'Notas']); df_u.at[idx, 'Notas'] = nota_previa + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ✅ Llamada completada."; df_u.at[idx, 'Proxima llamada'] = ""; guardar_datos(df_u); st.rerun()
                 st.markdown("---"); st.markdown("### 🚀 Promover a Negociación")
                 m_f, p_f, d_f = modulo_calculadora(f"prov_{idx}"); n_l_p = st.text_input("Link PDF (Opcional)", key=f"pl_{idx}")
                 if st.button("🚀 Guardar Cotización y Promover", type="primary", key=f"btn_promover_ok_{idx}"):
-                    df_a = get_data_main(); df_a.at[idx, 'Estado_Nego'] = "En Proceso"; df_a.at[idx, 'Monto USD / $'] = m_f; df_a.at[idx, 'Link_PDF'] = n_l_p; df_a.at[idx, 'Productos Seleccionados'] = p_f; df_a.at[idx, 'Descuento Aplicado'] = d_f
-                    if not str(df_a.at[idx, 'N° Cotiz.']).strip(): df_a.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_a)
-                    if not str(df_a.at[idx, 'N° Nego']).strip() or str(df_a.at[idx, 'N° Nego']) == 'nan': df_a.at[idx, 'N° Nego'] = generar_numero_negociacion(df_a)
-                    guardar_datos(df_a); st.rerun()
+                    with st.spinner("Promoviendo a Negociación..."):
+                        df_a = get_data_main(); df_a.at[idx, 'Estado_Nego'] = "En Proceso"; df_a.at[idx, 'Monto USD / $'] = m_f; df_a.at[idx, 'Link_PDF'] = n_l_p; df_a.at[idx, 'Productos Seleccionados'] = p_f; df_a.at[idx, 'Descuento Aplicado'] = d_f
+                        if not str(df_a.at[idx, 'N° Cotiz.']).strip(): df_a.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_a)
+                        if not str(df_a.at[idx, 'N° Nego']).strip() or str(df_a.at[idx, 'N° Nego']) == 'nan': df_a.at[idx, 'N° Nego'] = generar_numero_negociacion(df_a)
+                        guardar_datos(df_a); st.rerun()
 
             if es_admin:
                 st.markdown("---")
@@ -630,10 +663,11 @@ elif section == "Potenciales":
                 nuevo_as = c_rp1.selectbox("Cambiar asesor a:", asesores_list, index=idx_asesor, key=f"reasig_p_{idx}")
                 if c_rp2.button("🔁 Reasignar", key=f"btn_reasig_p_{idx}", use_container_width=True):
                     if nuevo_as != asesor_actual:
-                        df_u = get_data_main()
-                        df_u.at[idx, 'Asesor'] = nuevo_as
-                        df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🔄 Admin reasignó contacto de {asesor_actual} a {nuevo_as}."
-                        guardar_datos(df_u); st.rerun()
+                        with st.spinner("Reasignando..."):
+                            df_u = get_data_main()
+                            df_u.at[idx, 'Asesor'] = nuevo_as
+                            df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🔄 Admin reasignó contacto de {asesor_actual} a {nuevo_as}."
+                            guardar_datos(df_u); st.rerun()
 
 # --- PIPELINE KANBAN ---
 elif section == "Pipeline":
@@ -657,11 +691,12 @@ elif section == "Pipeline":
                 if puede:
                     nuevo_est = st.selectbox("Acción", ["Mover a..."] + [e for e in estados_kanban if e != estado], key=f"mov_pipe_{idx}_{row.get('N° Cotiz.','N')}", label_visibility="collapsed")
                     if nuevo_est != "Mover a...":
-                        df_actual = get_data_main(); df_actual.at[idx, 'Estado_Nego'] = nuevo_est
-                        if nuevo_est == "En Proceso" and not str(df_actual.at[idx, 'N° Cotiz.']).strip(): df_actual.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_actual)
-                        fecha_hoy = datetime.now().strftime("%d/%m/%Y"); nota_cambio = f"[{fecha_hoy}] 🔄 Movido a: {nuevo_est.upper()}"; nota_previa = str(df_actual.at[idx,'Notas'])
-                        df_actual.at[idx, 'Notas'] = nota_cambio if nota_previa.strip() in ["", "nan"] else f"{nota_previa}\n{nota_cambio}"
-                        guardar_datos(df_actual); st.rerun()
+                        with st.spinner("Moviendo..."):
+                            df_actual = get_data_main(); df_actual.at[idx, 'Estado_Nego'] = nuevo_est
+                            if nuevo_est == "En Proceso" and not str(df_actual.at[idx, 'N° Cotiz.']).strip(): df_actual.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_actual)
+                            fecha_hoy = datetime.now().strftime("%d/%m/%Y"); nota_cambio = f"[{fecha_hoy}] 🔄 Movido a: {nuevo_est.upper()}"; nota_previa = str(df_actual.at[idx,'Notas'])
+                            df_actual.at[idx, 'Notas'] = nota_cambio if nota_previa.strip() in ["", "nan"] else f"{nota_previa}\n{nota_cambio}"
+                            guardar_datos(df_actual); st.rerun()
 
 # --- CALENDARIO ---
 elif section == "Calendario":
@@ -686,6 +721,12 @@ elif section == "Calendario":
                 with c1:
                     with st.expander("⚙️ Reprogramar Contacto"):
                         c_f1, c_f2 = st.columns(2); f_val, h_val = parsear_fecha_hora(r.get('Proxima llamada', '')); e_f = c_f1.date_input("Reprogramar Día", value=f_val, key=f"ef_{idx}"); e_h = c_f2.time_input("Reprogramar Hora", value=h_val, key=f"eh_{idx}")
-                        if st.button("💾 Guardar", key=f"be_{idx}"): fh_str = f"{e_f.strftime('%d/%m/%Y')} {e_h.strftime('%H:%M')}"; df_u = get_data_main(); df_u.at[idx, 'Proxima llamada'] = fh_str; guardar_datos(df_u); st.rerun()
-                if c2.button("✅ Llamada OK", key=f"ok_cal_btn_{idx}", use_container_width=True): df_u = get_data_main(); df_u.at[idx, 'Proxima llamada'] = ""; guardar_datos(df_u); st.rerun()
+                        if st.button("💾 Guardar", key=f"be_{idx}"): 
+                            with st.spinner("Actualizando agenda..."):
+                                fh_str = f"{e_f.strftime('%d/%m/%Y')} {e_h.strftime('%H:%M')}"
+                                guardar_gestion(idx, r.get('Notas',''), "", fh_str, r.get('Proxima llamada',''))
+                                st.rerun()
+                if c2.button("✅ Llamada OK", key=f"ok_cal_btn_{idx}", use_container_width=True): 
+                    with st.spinner("Cerrando llamada..."):
+                        df_u = get_data_main(); df_u.at[idx, 'Proxima llamada'] = ""; df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ✅ Llamada OK."; guardar_datos(df_u); st.rerun()
                 if c3.link_button("📅 Google Calendar", link_cal, use_container_width=True): pass
