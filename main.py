@@ -51,6 +51,7 @@ ISO_PAISES = {
 COLUMNS_MAIN = ["N° Nego", "Cliente", "Profesion", "Direccion", "Pais", "Ciudad", "Estado /Prov.", "Empresa", "Cargo", "Telefono", "Email", "N° Cotiz.", "Monto USD / $", "Notas", "Proxima llamada", "Creado", "Asesor", "Estado_Nego", "Link_PDF", "Productos Seleccionados", "Descuento Aplicado"]
 COLUMNS_CAT = ["Producto", "Descripcion", "Categoria", "Moneda", "Precio"]
 COLUMNS_TICKETS = ["N° Ticket", "Fecha", "Cliente", "Empresa", "Asunto", "Estado", "Resolucion", "Tecnico"]
+COLUMNS_TAREAS = ["ID Tarea", "Asesor", "Descripcion", "Fecha_Hora_Vencimiento", "Estado", "Creado"]
 
 def extraer_pais_codigo(seleccion):
     if seleccion == "🌎 Otro": return "Otro", ""
@@ -159,6 +160,16 @@ def get_data_tickets():
         if col not in df.columns: df[col] = ""
     return df.fillna('')
 
+@st.cache_data(ttl=30)
+def get_data_tareas():
+    try: df = conn.read(worksheet="Tareas")
+    except: df = pd.DataFrame(columns=COLUMNS_TAREAS)
+    if df is None: df = pd.DataFrame(columns=COLUMNS_TAREAS)
+    if not df.empty: df.columns = df.columns.astype(str).str.strip()
+    for col in COLUMNS_TAREAS:
+        if col not in df.columns: df[col] = ""
+    return df.fillna('')
+
 def guardar_datos(df, sheet="Central Negociaciones"):
     df_safe = df.copy()
     if sheet == "Central Negociaciones":
@@ -178,6 +189,11 @@ def generar_numero_ticket(df):
     if 'N° Ticket' not in df.columns: return "TKT-1001"
     numeros = [int(''.join(filter(str.isdigit, str(val)))) for val in df['N° Ticket'].dropna() if str(val).startswith('TKT-') and ''.join(filter(str.isdigit, str(val)))]
     return f"TKT-{max(max(numeros) + 1 if numeros else 0, 1001):04d}"
+
+def generar_numero_tarea(df):
+    if 'ID Tarea' not in df.columns: return "TSK-1001"
+    numeros = [int(''.join(filter(str.isdigit, str(val)))) for val in df['ID Tarea'].dropna() if str(val).startswith('TSK-') and ''.join(filter(str.isdigit, str(val)))]
+    return f"TSK-{max(max(numeros) + 1 if numeros else 0, 1001):04d}"
 
 def guardar_gestion(indice_original, nota_existente, nueva_nota, nueva_fecha_str, fecha_anterior_str):
     df_actual = get_data_main(); fecha_hoy = datetime.now().strftime("%d/%m/%Y")
@@ -207,13 +223,32 @@ if not st.session_state.autenticado:
 es_tecnico = st.session_state.usuario_actual in TECNICOS
 es_admin = st.session_state.usuario_actual in ADMINISTRADORES
 
+# --- ALERTAS EMERGENTES (TOASTS) ---
+try:
+    df_alertas_tareas = get_data_tareas()
+    tareas_mias_pendientes = df_alertas_tareas[(df_alertas_tareas['Asesor'] == st.session_state.usuario_actual) & (df_alertas_tareas['Estado'] == 'Pendiente')]
+    for idx_alerta, t_alerta in tareas_mias_pendientes.iterrows():
+        fecha_vencimiento_str = str(t_alerta.get('Fecha_Hora_Vencimiento', '')).strip()
+        if fecha_vencimiento_str:
+            try:
+                dt_vencimiento = datetime.strptime(fecha_vencimiento_str, "%d/%m/%Y %H:%M")
+                if dt_vencimiento <= datetime.now():
+                    st.toast(f"**⏰ TAREA VENCIDA/PENDIENTE:**\n{t_alerta['Descripcion']}", icon="🔔")
+            except: pass
+except Exception as e:
+    pass # Falla silenciosa si la hoja Tareas está vacía o mal configurada
+
 # --- SIDEBAR ---
 with st.sidebar:
     st.markdown('<style>[data-testid="stSidebar"] {background-color: #2E3E57 !important;}</style>', unsafe_allow_html=True)
     st.columns([1, 4, 1])[1].image("logo_dicad.png", use_column_width=True) 
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p><br>", unsafe_allow_html=True) 
-    if es_tecnico: opciones_menu = ["Soporte", "Calendario"]; iconos_menu = ["headset", "calendar-date"]
-    else: opciones_menu = ["Dashboard", "Soporte", "Potenciales", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario", "Catálogo de Productos"]; iconos_menu = ["bar-chart-line", "headset", "person-bounding-box", "kanban", "briefcase", "person-plus", "calendar-date", "box-seam"]
+    if es_tecnico: 
+        opciones_menu = ["Soporte", "Calendario", "Tareas"]
+        iconos_menu = ["headset", "calendar-date", "list-check"]
+    else: 
+        opciones_menu = ["Dashboard", "Soporte", "Potenciales", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario", "Tareas", "Catálogo de Productos"]
+        iconos_menu = ["bar-chart-line", "headset", "person-bounding-box", "kanban", "briefcase", "person-plus", "calendar-date", "list-check", "box-seam"]
     section = option_menu(None, opciones_menu, icons=iconos_menu, default_index=0 if es_tecnico else 4, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
     st.markdown("---")
     rol_badge = '🛠️ Técnico' if es_tecnico else ('👑 Admin' if es_admin else '💼 Asesor')
@@ -298,6 +333,62 @@ if section == "Dashboard":
             st.plotly_chart(fig_map, use_container_width=True); st.dataframe(df_geo[['Pais', 'Cant_Negos', 'Monto_Total', 'Porcentaje']].sort_values('Cant_Negos', ascending=False), use_container_width=True, hide_index=True)
         else: st.info("No hay datos geográficos para mostrar.")
 
+# --- TAREAS ---
+elif section == "Tareas":
+    st.markdown("## 📋 Mis Tareas y Recordatorios")
+    df_tareas = get_data_tareas()
+    mis_tareas = df_tareas[df_tareas['Asesor'] == st.session_state.usuario_actual]
+    
+    with st.expander("➕ Cargar Nueva Tarea", expanded=True):
+        c_desc, c_f, c_h = st.columns([3, 1, 1])
+        desc_tarea = c_desc.text_input("Descripción de la tarea a recordar:")
+        f_tarea = c_f.date_input("Fecha")
+        h_tarea = c_h.time_input("Hora", value=datetime.strptime("10:00", "%H:%M").time())
+        if st.button("💾 Guardar Tarea", type="primary", use_container_width=True):
+            if not desc_tarea.strip():
+                st.warning("Debes escribir una descripción para la tarea.")
+            else:
+                with st.spinner("Guardando tarea..."):
+                    id_tarea = generar_numero_tarea(df_tareas)
+                    fh_str_tarea = f"{f_tarea.strftime('%d/%m/%Y')} {h_tarea.strftime('%H:%M')}"
+                    nueva_tarea = pd.DataFrame([{
+                        "ID Tarea": id_tarea, "Asesor": st.session_state.usuario_actual, 
+                        "Descripcion": desc_tarea, "Fecha_Hora_Vencimiento": fh_str_tarea, 
+                        "Estado": "Pendiente", "Creado": datetime.now().strftime("%d/%m/%Y %H:%M")
+                    }])
+                    guardar_datos(pd.concat([df_tareas, nueva_tarea], ignore_index=True), "Tareas")
+                    st.success("¡Tarea guardada exitosamente!")
+                    time.sleep(1)
+                    st.rerun()
+
+    st.markdown("---")
+    t_pendientes, t_completadas = st.tabs(["🔴 Pendientes", "🟢 Completadas"])
+    
+    with t_pendientes:
+        pendientes_df = mis_tareas[mis_tareas['Estado'] == 'Pendiente']
+        if pendientes_df.empty: st.info("No tenés tareas pendientes. ¡Todo al día!")
+        for idx_t, row_t in pendientes_df.iterrows():
+            st.markdown(f"<div style='background:white;padding:1em;border-radius:10px;border-left:5px solid #dc3545;margin-bottom:0.5em;color:black;'><b>📌 {row_t['Descripcion']}</b><br><small style='color:#6c757d;'>📅 Vence: {row_t['Fecha_Hora_Vencimiento']}</small></div>", unsafe_allow_html=True)
+            c_btn1, c_btn2, _ = st.columns([1, 1, 3])
+            if c_btn1.button("✅ Marcar Completada", key=f"ok_tsk_{idx_t}"):
+                with st.spinner("Actualizando..."):
+                    df_upd_tsk = get_data_tareas()
+                    df_upd_tsk.at[idx_t, 'Estado'] = 'Completada'
+                    guardar_datos(df_upd_tsk, "Tareas")
+                    st.rerun()
+            if c_btn2.button("🗑️ Borrar", key=f"del_tsk_{idx_t}"):
+                with st.spinner("Borrando..."):
+                    df_upd_tsk = get_data_tareas()
+                    df_upd_tsk.at[idx_t, 'Estado'] = 'Borrada'
+                    guardar_datos(df_upd_tsk, "Tareas")
+                    st.rerun()
+
+    with t_completadas:
+        completadas_df = mis_tareas[mis_tareas['Estado'] == 'Completada']
+        if completadas_df.empty: st.info("Aún no completaste tareas.")
+        for idx_t, row_t in completadas_df.iterrows():
+            st.markdown(f"<div style='background:#f8f9fa;padding:1em;border-radius:10px;border-left:5px solid #28a745;margin-bottom:0.5em;color:gray;'><del><b>📌 {row_t['Descripcion']}</b></del><br><small>📅 Vencía: {row_t['Fecha_Hora_Vencimiento']}</small></div>", unsafe_allow_html=True)
+
 # --- SOPORTE TÉCNICO & TICKETS ---
 elif section == "Soporte":
     st.markdown("## 🛠️ Centro de Soporte Técnico (Tickets)")
@@ -321,6 +412,8 @@ elif section == "Soporte":
                                 df_upd_t.at[idx_t, 'Resolucion'] = resolucion
                                 df_upd_t.at[idx_t, 'Tecnico'] = st.session_state.usuario_actual
                                 guardar_datos(df_upd_t, "Tickets")
+                                st.success("✅ Ticket cerrado exitosamente.")
+                                time.sleep(1.5)
                                 st.rerun()
         
         st.markdown("---")
@@ -366,7 +459,8 @@ elif section == "Soporte":
                                     "Asunto": asunto_ticket, "Estado": "Abierto", "Resolucion": "", "Tecnico": ""
                                 }])
                                 guardar_datos(pd.concat([df_t, nuevo_tkt], ignore_index=True), "Tickets")
-                                time.sleep(1)
+                                st.success(f"✅ ¡Éxito! Ticket {num_tkt} creado. Revisá el Panel de Tickets.")
+                                time.sleep(1.5)
                                 st.rerun()
                 
                 with c_tabs2:
