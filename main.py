@@ -175,7 +175,7 @@ def guardar_datos(df, sheet="Central Negociaciones"):
     if sheet == "Central Negociaciones":
         df_safe['Telefono'] = df_safe['Telefono'].astype(str).apply(lambda x: f" {x.strip()}" if x.strip().startswith("+") else x.strip())
     
-    # ESCUDO ANTI-API ERROR (Reintentos automáticos si Google Sheets se satura)
+    # ESCUDO ANTI-API ERROR
     exito = False
     for intento in range(3):
         try:
@@ -183,7 +183,7 @@ def guardar_datos(df, sheet="Central Negociaciones"):
             exito = True
             break
         except Exception as e:
-            time.sleep(1.5) # Espera 1.5 segs antes de reintentar
+            time.sleep(1.5)
             
     if not exito:
         st.error("🚨 Error de conexión con Google Sheets (Servidor Saturado). Por favor, intentá de nuevo en 5 segundos.")
@@ -261,7 +261,7 @@ with st.sidebar:
     else: 
         opciones_menu = ["Dashboard", "Soporte", "Potenciales", "Instituciones", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario", "Tareas", "Catálogo de Productos"]
         iconos_menu = ["bar-chart-line", "headset", "person-bounding-box", "bank", "kanban", "briefcase", "person-plus", "calendar-date", "list-check", "box-seam"]
-    section = option_menu(None, opciones_menu, icons=iconos_menu, default_index=0 if es_tecnico else 4, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
+    section = option_menu(None, opciones_menu, icons=iconos_menu, default_index=0 if es_tecnico else 2, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
     st.markdown("---")
     rol_badge = '🛠️ Técnico' if es_tecnico else ('👑 Admin' if es_admin else '💼 Asesor')
     st.markdown(f"<div style='text-align: center; color: white; font-size: 14px; margin-bottom: 10px;'>{rol_badge}: <b>{st.session_state.usuario_actual}</b></div>", unsafe_allow_html=True)
@@ -344,6 +344,81 @@ if section == "Dashboard":
             fig_map = px.choropleth(df_geo, locations="ISO", color="Cant_Negos", hover_name="Pais", hover_data={"ISO":False, "Cant_Negos":True, "Monto_Total":':,.0f', "Porcentaje":':.1f%'}, color_continuous_scale=px.colors.sequential.Oranges, labels={'Cant_Negos':'Negociaciones'}); fig_map.update_layout(geo=dict(showframe=False, showcoastlines=True, projection_type='equirectangular'), margin={"r":0,"t":0,"l":0,"b":0})
             st.plotly_chart(fig_map, use_container_width=True); st.dataframe(df_geo[['Pais', 'Cant_Negos', 'Monto_Total', 'Porcentaje']].sort_values('Cant_Negos', ascending=False), use_container_width=True, hide_index=True)
         else: st.info("No hay datos geográficos para mostrar.")
+
+# --- POTENCIALES ---
+elif section == "Potenciales":
+    st.markdown("## 🎯 Clientes Potenciales")
+    c_f1, c_f2 = st.columns([1, 3])
+    asesor_sel = c_f1.selectbox("Asesor:", lista_asesores, index=index_inicio)
+    busq_pot = c_f2.text_input("🔍 Buscar Cliente/Empresa/Email:")
+    
+    # Filtramos para EXCLUIR a las Instituciones de esta pantalla
+    cond_inst = df['Cliente'].astype(str).str.upper().str.startswith(('COLEGIO', 'CONSEJO', 'UNIVERSIDAD', 'FACULTAD', 'CAMARA', 'CÁMARA'))
+    df_pot = df[(df['Estado_Nego'] == 'Potencial') & (~cond_inst)]
+    
+    if asesor_sel != "Todos los Asesores": df_pot = df_pot[df_pot['Asesor'] == asesor_sel]
+    if busq_pot: 
+        cond_p = (df_pot['Cliente'].astype(str).str.contains(busq_pot, case=False, na=False) | df_pot['Empresa'].astype(str).str.contains(busq_pot, case=False, na=False) | df_pot['Email'].astype(str).str.contains(busq_pot, case=False, na=False))
+        df_pot = df_pot[cond_p]
+        
+    st.metric("Total de Leads (Sin Instituciones)", len(df_pot)); st.markdown("---")
+
+    for idx, row in df_pot.iterrows():
+        puede = es_admin or (st.session_state.usuario_actual == row.get('Asesor', ''))
+        
+        es_cli = str(row.get('Cliente', '')).strip() in clientes_actuales
+        badge_cli = "<span style='background:#0d6efd;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:5px;vertical-align:middle;'>⭐ CLIENTE</span>" if es_cli else ""
+
+        st.markdown(f'<div style="background:white;padding:1em;border-radius:10px;border-left:5px solid #6c757d;margin-bottom:0.5em;box-shadow:0 1px 4px #d0d6e1;color:black;"><b>{row.get("Cliente", "")}</b>{badge_cli} ({row.get("Empresa", "")}) | 📞 {row.get("Telefono", "")} | 📅 {row.get("Proxima llamada", "")}</div>', unsafe_allow_html=True)
+        
+        with st.expander("📞 ASISTENTE DE LLAMADA (Guiones de Descubrimiento)", expanded=False):
+            st.warning("🗣️ **Objetivo de esta llamada:** Descubrir el dolor del cliente y generar interés para enviar presupuesto.")
+            st.markdown("💡 **Tip 1:** ¿Qué desafío estructural o de tiempos los motivó a buscar nuevas herramientas?")
+            st.markdown("💡 **Tip 2:** ¿Qué software están usando hoy y qué es lo que más les frustra de ese proceso?")
+        
+        with st.expander(f"Ver / Editar a {row.get('Cliente', '')}"):
+            st.info(f"**Historial:**\n{row.get('Notas', 'Sin notas.')}")
+            
+            if puede:
+                with st.expander("⚙️ Editar Datos del Contacto"):
+                    c_ep1, c_ep2 = st.columns(2)
+                    ec_p = c_ep1.text_input("Nombre", row.get('Cliente',''), key=f"ecp_{idx}"); ee_p = c_ep1.text_input("Empresa", row.get('Empresa',''), key=f"eep_{idx}"); eprof_p = c_ep1.text_input("Profesión", row.get('Profesion',''), key=f"eprp_{idx}"); ecargo_p = c_ep1.text_input("Cargo", row.get('Cargo',''), key=f"ecrp_{idx}"); edir_p = c_ep1.text_input("Dirección", row.get('Direccion',''), key=f"edirp_{idx}")
+                    idx_pa_p = next((i for i, p in enumerate(CODIGOS_PAISES) if str(row.get('Pais','')).lower() in p.lower() and row.get('Pais','') != ""), 0); ep_p = c_ep2.selectbox("País", CODIGOS_PAISES, index=idx_pa_p, key=f"epp_{idx}"); eest_p = c_ep2.text_input("Estado / Provincia", row.get('Estado /Prov.',''), key=f"eestp_{idx}"); eciu_p = c_ep2.text_input("Ciudad", row.get('Ciudad',''), key=f"eciup_{idx}"); em_p = c_ep2.text_input("Email", row.get('Email',''), key=f"emp_{idx}"); etel_p = c_ep2.text_input("Teléfono", row.get('Telefono',''), key=f"etelp_{idx}")
+                    if st.button("💾 Actualizar Datos", key=f"becp_{idx}", type="primary"): 
+                        with st.spinner("Actualizando datos..."):
+                            pn_p, cn_p = extraer_pais_codigo(ep_p); telf_p = f"{cn_p} {etel_p}" if (etel_p.strip() and not etel_p.startswith("+") and cn_p) else etel_p; df_u = get_data_main(); df_u.loc[idx, ['Cliente','Empresa','Profesion','Cargo','Direccion','Estado /Prov.','Pais','Ciudad','Email','Telefono']] = [ec_p, ee_p, eprof_p, ecargo_p, edir_p, eest_p, pn_p, eciu_p, em_p, telf_p]; guardar_datos(df_u); st.rerun()
+                st.markdown("---")
+                c_n1, c_n2, c_n3 = st.columns([1.5, 2, 1.5]); f_o, h_o = parsear_fecha_hora(row.get('Proxima llamada', '')); n_f = c_n1.date_input("Día", value=f_o, key=f"f_p_{idx}"); n_h = c_n1.time_input("Hora", value=h_o, key=f"h_p_{idx}"); n_n = c_n2.text_input("Nota hoy", key=f"n_p_{idx}")
+                if c_n3.button("💾 Guardar", key=f"b_p_{idx}"): 
+                    with st.spinner("Guardando..."):
+                        guardar_gestion(idx, row.get('Notas',''), n_n, f"{n_f.strftime('%d/%m/%Y')} {n_h.strftime('%H:%M')}", row.get('Proxima llamada','')); st.rerun()
+                if c_n3.button("✅ Llamada OK", key=f"ok_pot_{idx}", use_container_width=True): 
+                    with st.spinner("Registrando..."):
+                        df_u = get_data_main(); nota_previa = str(df_u.at[idx, 'Notas']); df_u.at[idx, 'Notas'] = nota_previa + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ✅ Llamada completada."; df_u.at[idx, 'Proxima llamada'] = ""; guardar_datos(df_u); st.rerun()
+                st.markdown("---"); st.markdown("### 🚀 Promover a Negociación")
+                m_f, p_f, d_f = modulo_calculadora(f"prov_{idx}"); n_l_p = st.text_input("Link PDF (Opcional)", key=f"pl_{idx}")
+                if st.button("🚀 Guardar Cotización y Promover", type="primary", key=f"btn_promover_ok_{idx}"):
+                    with st.spinner("Promoviendo a Negociación..."):
+                        df_a = get_data_main(); df_a.at[idx, 'Estado_Nego'] = "En Proceso"; df_a.at[idx, 'Monto USD / $'] = m_f; df_a.at[idx, 'Link_PDF'] = n_l_p; df_a.at[idx, 'Productos Seleccionados'] = p_f; df_a.at[idx, 'Descuento Aplicado'] = d_f
+                        if not str(df_a.at[idx, 'N° Cotiz.']).strip(): df_a.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_a)
+                        if not str(df_a.at[idx, 'N° Nego']).strip() or str(df_a.at[idx, 'N° Nego']) == 'nan': df_a.at[idx, 'N° Nego'] = generar_numero_negociacion(df_a)
+                        guardar_datos(df_a); st.rerun()
+
+            if es_admin:
+                st.markdown("---")
+                st.markdown("### 🔄 Reasignar Asesor (Admin)")
+                c_rp1, c_rp2 = st.columns([3, 1])
+                asesores_list = list(USUARIOS.keys())
+                asesor_actual = str(row.get('Asesor', ''))
+                idx_asesor = asesores_list.index(asesor_actual) if asesor_actual in asesores_list else 0
+                nuevo_as = c_rp1.selectbox("Cambiar asesor a:", asesores_list, index=idx_asesor, key=f"reasig_p_{idx}")
+                if c_rp2.button("🔁 Reasignar", key=f"btn_reasig_p_{idx}", use_container_width=True):
+                    if nuevo_as != asesor_actual:
+                        with st.spinner("Reasignando..."):
+                            df_u = get_data_main()
+                            df_u.at[idx, 'Asesor'] = nuevo_as
+                            df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🔄 Admin reasignó contacto de {asesor_actual} a {nuevo_as}."
+                            guardar_datos(df_u); st.rerun()
 
 # --- INSTITUCIONES (BASE DE DATOS) ---
 elif section == "Instituciones":
