@@ -253,7 +253,7 @@ except Exception as e: pass
 # --- SIDEBAR ---
 with st.sidebar:
     st.markdown('<style>[data-testid="stSidebar"] {background-color: #2E3E57 !important;}</style>', unsafe_allow_html=True)
-    st.columns([1, 4, 1])[1].image("logo_dicad.png", use_column_width=True) 
+    st.columns([1, 4, 1])[1].image("logo_dicad.png", use_container_width=True) 
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p><br>", unsafe_allow_html=True) 
     if es_tecnico: 
         opciones_menu = ["Soporte", "Calendario", "Tareas"]
