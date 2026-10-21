@@ -253,7 +253,7 @@ except Exception as e: pass
 # --- SIDEBAR ---
 with st.sidebar:
     st.markdown('<style>[data-testid="stSidebar"] {background-color: #2E3E57 !important;}</style>', unsafe_allow_html=True)
-    st.columns([1, 4, 1])[1].image("logo_dicad.png", use_container_width=True) 
+    st.columns([1, 4, 1])[1].image("logo_dicad.png", use_column_width=True) 
     st.markdown("<p style='text-align: center; color:#fff; font-size:16px; margin-top:0.5em; font-weight: bold;'>CRM DICAD AMÉRICA</p><br>", unsafe_allow_html=True) 
     if es_tecnico: 
         opciones_menu = ["Soporte", "Calendario", "Tareas"]
@@ -291,13 +291,35 @@ def modulo_calculadora(key_prefix):
             cantidad = c_q.number_input("Cantidad", min_value=1, value=1, key=f"cant_{key_prefix}_{i}")
             tipo_desc = c_d1.selectbox("Descuento en:", ["Porcentaje (%)", "Monto Fijo"], key=f"td_{key_prefix}_{i}")
             val_desc = c_d2.number_input("Valor Desc.", min_value=0.0, value=0.0, key=f"vd_{key_prefix}_{i}")
+            
             subtotal_linea = precio_uni * cantidad
-            if "Porcentaje" in tipo_desc: monto_desc = subtotal_linea * (val_desc / 100); txt_desc = f"{val_desc}%"
-            else: monto_desc = val_desc; txt_desc = f"{moneda_ref} {val_desc}"
+            
+            if "Porcentaje" in tipo_desc: 
+                monto_desc = subtotal_linea * (val_desc / 100)
+                txt_desc = f"{val_desc}% (-{moneda_ref} {monto_desc:,.0f})" if val_desc > 0 else "0%"
+            else: 
+                monto_desc = val_desc
+                txt_desc = f"-{moneda_ref} {val_desc:,.0f}" if val_desc > 0 else "0"
+                
             precio_final_prod = subtotal_linea - monto_desc
             c_d3.markdown(f"<div style='margin-top:28px; font-weight:bold; color:#28a745; font-size:15px;'>👉 Total Línea: {moneda_ref} {precio_final_prod:,.0f}</div>", unsafe_allow_html=True)
-            subtotal_general += subtotal_linea; total_final += precio_final_prod; ahorro_total += monto_desc
-            json_data.append({"nombre": nombre_real, "desc": fila_prod['Descripcion'], "cantidad": f"{cantidad} pcs.", "precio": f"{moneda_ref} {precio_uni:,.0f}", "desc_val": txt_desc, "importe": f"{moneda_ref} {precio_final_prod:,.0f}", "raw_precio": precio_uni, "raw_importe": precio_final_prod})
+            
+            subtotal_general += subtotal_linea
+            total_final += precio_final_prod
+            ahorro_total += monto_desc
+            
+            # EL CAMBIO ESTA ACA: Guardamos el Bruto (subtotal_linea) en 'importe' y modificamos 'desc_val'
+            json_data.append({
+                "nombre": nombre_real, 
+                "desc": fila_prod['Descripcion'], 
+                "cantidad": f"{cantidad} pcs.", 
+                "precio": f"{moneda_ref} {precio_uni:,.0f}", 
+                "desc_val": txt_desc, 
+                "importe": f"{moneda_ref} {subtotal_linea:,.0f}", 
+                "raw_precio": precio_uni, 
+                "raw_importe": precio_final_prod
+            })
+            
             st.markdown("<hr style='margin:10px 0; border: 0; border-top: 1px dashed #ccc;'>", unsafe_allow_html=True)
         st.success(f"### 💰 TOTAL FINAL A COBRAR: {moneda_ref} {total_final:,.2f}")
         texto_ahorro = f"Ahorro {moneda_ref} {ahorro_total:,.0f}" if ahorro_total > 0 else "Sin descuento"
@@ -352,7 +374,6 @@ elif section == "Potenciales":
     asesor_sel = c_f1.selectbox("Asesor:", lista_asesores, index=index_inicio)
     busq_pot = c_f2.text_input("🔍 Buscar Cliente/Empresa/Email:")
     
-    # Filtramos para EXCLUIR a las Instituciones de esta pantalla
     cond_inst = df['Cliente'].astype(str).str.upper().str.startswith(('COLEGIO', 'CONSEJO', 'UNIVERSIDAD', 'FACULTAD', 'CAMARA', 'CÁMARA'))
     df_pot = df[(df['Estado_Nego'] == 'Potencial') & (~cond_inst)]
     
@@ -429,7 +450,6 @@ elif section == "Instituciones":
     asesor_sel = c_f1.selectbox("Asesor:", lista_asesores, index=index_inicio)
     busq_inst = c_f2.text_input("🔍 Buscar Institución/Empresa/Email:")
     
-    # Filtro mágico por palabras clave
     cond_inst = df['Cliente'].astype(str).str.upper().str.startswith(('COLEGIO', 'CONSEJO', 'UNIVERSIDAD', 'FACULTAD', 'CAMARA', 'CÁMARA'))
     df_inst = df[cond_inst]
     
