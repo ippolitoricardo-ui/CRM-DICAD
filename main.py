@@ -114,14 +114,25 @@ def procesar_excel(row, obs, tipo_doc):
 
     monto_base = limpiar_monto_para_suma(row['Monto USD / $'])
     descuento_total = limpiar_monto_para_suma(row.get('Descuento Aplicado', '0'))
-    subtotal_bruto = monto_base + descuento_total
     
     impuesto_pct = 0.21 if "Argentina" in tipo_doc else 0.05
-    ws['E24'] = "IVA (21%)" if "Argentina" in tipo_doc else "Gastos adm. (5%)"
-    val_impuestos = monto_base * impuesto_pct; total_final = monto_base + val_impuestos
+    val_impuestos = monto_base * impuesto_pct
+    total_final = monto_base + val_impuestos
 
-    ws['F22'] = subtotal_bruto; ws['F23'] = descuento_total
-    ws['F24'] = val_impuestos; ws['F25'] = total_final; ws['A31'] = f"Observaciones: {obs}"
+    # Sobrescribimos directamente la caja de resumen de la plantilla para que tenga logica matematica perfecta
+    ws['E22'] = "Subtotal Neto"
+    ws['F22'] = monto_base
+    
+    ws['E23'] = "IVA (21%)" if "Argentina" in tipo_doc else "Gastos adm. (5%)"
+    ws['F23'] = val_impuestos
+    
+    ws['E24'] = "Total a Pagar"
+    ws['F24'] = total_final
+    
+    ws['E25'] = "Ahorro Total Cliente"
+    ws['F25'] = descuento_total # Lo mostramos positivo como un logro del cliente
+
+    ws['A31'] = f"Observaciones: {obs}"
     
     ws.sheet_properties.pageSetUpPr.fitToPage = True; ws.page_setup.fitToHeight = 1; ws.page_setup.fitToWidth = 1
     ws.page_margins.left = 0.2; ws.page_margins.right = 0.2; ws.page_margins.top = 0.4; ws.page_margins.bottom = 0.4
@@ -261,7 +272,7 @@ with st.sidebar:
     else: 
         opciones_menu = ["Dashboard", "Soporte", "Potenciales", "Instituciones", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario", "Tareas", "Catálogo de Productos"]
         iconos_menu = ["bar-chart-line", "headset", "person-bounding-box", "bank", "kanban", "briefcase", "person-plus", "calendar-date", "list-check", "box-seam"]
-    section = option_menu(None, opciones_menu, icons=iconos_menu, default_index=0 if es_tecnico else 2, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
+    section = option_menu(None, opciones_menu, icons=iconos_menu, default_index=0 if es_tecnico else 4, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
     st.markdown("---")
     rol_badge = '🛠️ Técnico' if es_tecnico else ('👑 Admin' if es_admin else '💼 Asesor')
     st.markdown(f"<div style='text-align: center; color: white; font-size: 14px; margin-bottom: 10px;'>{rol_badge}: <b>{st.session_state.usuario_actual}</b></div>", unsafe_allow_html=True)
@@ -308,14 +319,14 @@ def modulo_calculadora(key_prefix):
             total_final += precio_final_prod
             ahorro_total += monto_desc
             
-            # EL CAMBIO ESTA ACA: Guardamos el Bruto (subtotal_linea) en 'importe' y modificamos 'desc_val'
+            # EL CAMBIO ESTA ACA: Volvemos a guardar el Neto en la columna 'importe'
             json_data.append({
                 "nombre": nombre_real, 
                 "desc": fila_prod['Descripcion'], 
                 "cantidad": f"{cantidad} pcs.", 
                 "precio": f"{moneda_ref} {precio_uni:,.0f}", 
                 "desc_val": txt_desc, 
-                "importe": f"{moneda_ref} {subtotal_linea:,.0f}", 
+                "importe": f"{moneda_ref} {precio_final_prod:,.0f}", 
                 "raw_precio": precio_uni, 
                 "raw_importe": precio_final_prod
             })
