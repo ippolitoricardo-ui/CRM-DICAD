@@ -100,15 +100,11 @@ def procesar_excel(row, obs, tipo_doc):
 
     ws['B10'] = row['Cliente']; ws['B11'] = row['Empresa']; ws['B12'] = row['Telefono']
     ws['A15'] = row['Asesor']; ws['B15'] = date.today().strftime("%d/%m/%Y")
-    ws['C15'] = row['N° Cotiz.']; ws['D15'] = "USD" 
+    ws['C15'] = row['N° Cotiz.']; ws['D15'] = "USD"
 
-    # Forzamos los nuevos títulos de columnas
-    ws['A17'] = "Concepto (Cant.)"
-    ws['B17'] = "Descripción"
-    ws['C17'] = "Precio Unitario"
-    ws['D17'] = "% Dto."
-    ws['E17'] = "Precio Dto."
-    ws['F17'] = "Total"
+    # Títulos limpios de columnas
+    ws['A17'] = "Concepto (Cant.)"; ws['B17'] = "Descripción"; ws['C17'] = "Precio Unitario"
+    ws['D17'] = "% Dto."; ws['E17'] = "Precio Dto."; ws['F17'] = "Total"
     
     total_neto = 0.0
 
@@ -130,10 +126,8 @@ def procesar_excel(row, obs, tipo_doc):
             descuento_monto = (raw_precio * cant_num) * (pct / 100)
         else:
             descuento_monto = limpiar_monto_para_suma(desc_str)
-            if (raw_precio * cant_num) > 0:
-                pct = (descuento_monto / (raw_precio * cant_num)) * 100
-            else:
-                pct = 0.0
+            if (raw_precio * cant_num) > 0: pct = (descuento_monto / (raw_precio * cant_num)) * 100
+            else: pct = 0.0
                 
         txt_pct = f"{pct:,.1f}%" if pct > 0 else "-"
         txt_precio_dto = f"USD {descuento_monto:,.0f}" if descuento_monto > 0 else "-"
@@ -153,25 +147,17 @@ def procesar_excel(row, obs, tipo_doc):
         for col in ['A', 'B', 'C', 'D', 'E', 'F']:
             ws[f'{col}{curr_row}'].fill = relleno; ws[f'{col}{curr_row}'].alignment = Alignment(vertical="top", wrap_text=True)
 
-    if total_neto == 0: 
-        total_neto = limpiar_monto_para_suma(row['Monto USD / $'])
+    if total_neto == 0: total_neto = limpiar_monto_para_suma(row['Monto USD / $'])
 
     impuesto_pct = 0.21 if "Argentina" in tipo_doc else 0.05
     val_impuestos = total_neto * impuesto_pct
     total_final = total_neto + val_impuestos
 
-    ws['E22'] = "SUBTOTAL NETO"
-    ws['F22'] = f"USD {total_neto:,.2f}"
-    
+    ws['E22'] = "SUBTOTAL NETO"; ws['F22'] = f"USD {total_neto:,.2f}"
     ws['E23'] = "I.V.A. (21%)" if "Argentina" in tipo_doc else "Gastos Adm. (5%)"
     ws['F23'] = f"USD {val_impuestos:,.2f}"
-    
-    ws['E24'] = ""
-    ws['F24'] = ""
-    
-    ws['E25'] = "TOTAL A PAGAR"
-    ws['F25'] = f"USD {total_final:,.2f}"
-
+    ws['E24'] = ""; ws['F24'] = ""
+    ws['E25'] = "TOTAL A PAGAR"; ws['F25'] = f"USD {total_final:,.2f}"
     ws['A31'] = f"Observaciones: {obs}"
     
     ws.sheet_properties.pageSetUpPr.fitToPage = True; ws.page_setup.fitToHeight = 1; ws.page_setup.fitToWidth = 1
@@ -286,7 +272,7 @@ if not st.session_state.autenticado:
 es_tecnico = st.session_state.usuario_actual in TECNICOS
 es_admin = st.session_state.usuario_actual in ADMINISTRADORES
 
-# --- ALERTAS EMERGENTES (TOASTS) ---
+# --- ALERTAS EMERGENTES ---
 try:
     df_alertas_tareas = get_data_tareas()
     tareas_mias_pendientes = df_alertas_tareas[(df_alertas_tareas['Asesor'] == st.session_state.usuario_actual) & (df_alertas_tareas['Estado'] == 'Pendiente')]
@@ -509,7 +495,7 @@ elif section == "Directorio / Leads":
                             df_u.loc[mask_r, 'Notas'] = df_u.loc[mask_r, 'Notas'].astype(str) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🔄 Admin reasignó contacto de {asesor_actual} a {nuevo_as}."
                             guardar_datos(df_u); st.rerun()
 
-# --- INSTITUCIONES (BASE DE DATOS) ---
+# --- INSTITUCIONES ---
 elif section == "Instituciones":
     st.markdown("## 🏛️ Base de Datos de Instituciones")
     st.info("Directorio automático. Contiene los contactos cuyo nombre comienza con: Colegio, Consejo, Universidad, Facultad o Cámara.")
@@ -599,6 +585,35 @@ elif section == "Instituciones":
                             df_u.at[idx, 'Asesor'] = nuevo_as
                             df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🔄 Admin reasignó contacto de {asesor_actual} a {nuevo_as}."
                             guardar_datos(df_u); st.rerun()
+
+# --- PIPELINE KANBAN ---
+elif section == "Pipeline":
+    c_t, c_b = st.columns([4, 1])
+    with c_t: st.markdown("## 📊 Pipeline de Ventas")
+    if c_b.button("🔄 Actualizar Tablero", use_container_width=True): st.cache_data.clear(); st.rerun()
+    asesor_sel = st.selectbox("Filtrar Tablero por Asesor:", lista_asesores, index=index_inicio); df_pipe = df if asesor_sel == "Todos los Asesores" else df[df['Asesor'] == asesor_sel]
+    estados_kanban = ["Potencial", "En Proceso", "Ganada", "Perdida"]; cols_kanban = st.columns(4)
+    for i, estado in enumerate(estados_kanban):
+        with cols_kanban[i]:
+            df_col = df_pipe[df_pipe['Estado_Nego'] == estado]
+            tot_usd = sum(limpiar_monto_para_suma(x) for x in df_col['Monto USD / $'] if 'ARS' not in str(x).upper()); color_header = "#6c757d" if estado=="Potencial" else "#ffc107" if estado=="En Proceso" else "#28a745" if estado=="Ganada" else "#dc3545"
+            st.markdown(f"<div style='background-color:{color_header}; color:white; padding:10px; border-radius:5px; text-align:center; font-weight:bold; margin-bottom:15px;'>{estado.upper()} ({len(df_col)})<br>USD {tot_usd:,.0f}</div>", unsafe_allow_html=True)
+            for idx, row in df_col.iterrows():
+                puede = es_admin or (st.session_state.usuario_actual == row.get('Asesor', '')); nego_codigo = str(row.get('N° Nego', '')).strip(); nego_codigo = nego_codigo if (nego_codigo and nego_codigo != 'nan') else "S/N"
+                
+                es_cli = str(row.get('Cliente', '')).strip() in clientes_actuales
+                badge_cli = "<span style='background:#0d6efd;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:5px;vertical-align:middle;'>⭐ CLIENTE</span>" if es_cli else ""
+                
+                st.markdown(f"<div style='background:white; padding:12px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.15); margin-bottom:5px; border-left:4px solid {color_header}; color:black;'><b style='font-size:14px;'>{row.get('Cliente','')}</b>{badge_cli}<br><span style='font-size:11px; color:#FF6600; font-weight:bold;'>{nego_codigo}</span> | <span style='font-size:12px; color:#555;'>{row.get('Empresa','')}</span><br><b style='font-size:13px; color:#2261b6;'>{row.get('Monto USD / $','')}</b><br><span style='font-size:11px; color:#888;'>📅 {row.get('Proxima llamada','')}</span></div>", unsafe_allow_html=True)
+                if puede:
+                    nuevo_est = st.selectbox("Acción", ["Mover a..."] + [e for e in estados_kanban if e != estado], key=f"mov_pipe_{idx}_{row.get('N° Cotiz.','N')}", label_visibility="collapsed")
+                    if nuevo_est != "Mover a...":
+                        with st.spinner("Moviendo..."):
+                            df_actual = get_data_main(); df_actual.at[idx, 'Estado_Nego'] = nuevo_est
+                            if nuevo_est == "En Proceso" and not str(df_actual.at[idx, 'N° Cotiz.']).strip(): df_actual.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_actual)
+                            fecha_hoy = datetime.now().strftime("%d/%m/%Y"); nota_cambio = f"[{fecha_hoy}] 🔄 Movido a: {nuevo_est.upper()}"; nota_previa = str(df_actual.at[idx,'Notas'])
+                            df_actual.at[idx, 'Notas'] = nota_cambio if nota_previa.strip() in ["", "nan"] else f"{nota_previa}\n{nota_cambio}"
+                            guardar_datos(df_actual); st.rerun()
 
 # --- NEGOCIACIONES ---
 elif section == "Negociaciones":
@@ -778,35 +793,6 @@ elif section == "Agregar Cliente":
                     new = pd.DataFrame([{"N° Nego": generar_numero_negociacion(df), "Creado": datetime.now().strftime("%d/%m/%Y"), "Cliente": cli, "Profesion": prof, "Direccion": dir_pos, "Estado /Prov.": est_prov, "Pais": p_f, "Ciudad": ciu, "Empresa": emp, "Cargo": car, "Telefono": tel_f, "Email": eml, "N° Cotiz.": cot_f, "Monto USD / $": monto_final, "Notas": f"[{datetime.now().strftime('%d/%m/%Y')}] 📝 {n_i}" if n_i else "", "Proxima llamada": fh_str, "Asesor": ase, "Estado_Nego": est_i, "Link_PDF": l_p, "Productos Seleccionados": prods_final, "Descuento Aplicado": desc_final}])
                     guardar_datos(pd.concat([df, new], ignore_index=True)); st.session_state.f_k += 1; st.success("Guardado!"); time.sleep(1); st.rerun()
 
-# --- PIPELINE KANBAN ---
-elif section == "Pipeline":
-    c_t, c_b = st.columns([4, 1])
-    with c_t: st.markdown("## 📊 Pipeline de Ventas")
-    if c_b.button("🔄 Actualizar Tablero", use_container_width=True): st.cache_data.clear(); st.rerun()
-    asesor_sel = st.selectbox("Filtrar Tablero por Asesor:", lista_asesores, index=index_inicio); df_pipe = df if asesor_sel == "Todos los Asesores" else df[df['Asesor'] == asesor_sel]
-    estados_kanban = ["Potencial", "En Proceso", "Ganada", "Perdida"]; cols_kanban = st.columns(4)
-    for i, estado in enumerate(estados_kanban):
-        with cols_kanban[i]:
-            df_col = df_pipe[df_pipe['Estado_Nego'] == estado]
-            tot_usd = sum(limpiar_monto_para_suma(x) for x in df_col['Monto USD / $'] if 'ARS' not in str(x).upper()); color_header = "#6c757d" if estado=="Potencial" else "#ffc107" if estado=="En Proceso" else "#28a745" if estado=="Ganada" else "#dc3545"
-            st.markdown(f"<div style='background-color:{color_header}; color:white; padding:10px; border-radius:5px; text-align:center; font-weight:bold; margin-bottom:15px;'>{estado.upper()} ({len(df_col)})<br>USD {tot_usd:,.0f}</div>", unsafe_allow_html=True)
-            for idx, row in df_col.iterrows():
-                puede = es_admin or (st.session_state.usuario_actual == row.get('Asesor', '')); nego_codigo = str(row.get('N° Nego', '')).strip(); nego_codigo = nego_codigo if (nego_codigo and nego_codigo != 'nan') else "S/N"
-                
-                es_cli = str(row.get('Cliente', '')).strip() in clientes_actuales
-                badge_cli = "<span style='background:#0d6efd;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:5px;vertical-align:middle;'>⭐ CLIENTE</span>" if es_cli else ""
-                
-                st.markdown(f"<div style='background:white; padding:12px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.15); margin-bottom:5px; border-left:4px solid {color_header}; color:black;'><b style='font-size:14px;'>{row.get('Cliente','')}</b>{badge_cli}<br><span style='font-size:11px; color:#FF6600; font-weight:bold;'>{nego_codigo}</span> | <span style='font-size:12px; color:#555;'>{row.get('Empresa','')}</span><br><b style='font-size:13px; color:#2261b6;'>{row.get('Monto USD / $','')}</b><br><span style='font-size:11px; color:#888;'>📅 {row.get('Proxima llamada','')}</span></div>", unsafe_allow_html=True)
-                if puede:
-                    nuevo_est = st.selectbox("Acción", ["Mover a..."] + [e for e in estados_kanban if e != estado], key=f"mov_pipe_{idx}_{row.get('N° Cotiz.','N')}", label_visibility="collapsed")
-                    if nuevo_est != "Mover a...":
-                        with st.spinner("Moviendo..."):
-                            df_actual = get_data_main(); df_actual.at[idx, 'Estado_Nego'] = nuevo_est
-                            if nuevo_est == "En Proceso" and not str(df_actual.at[idx, 'N° Cotiz.']).strip(): df_actual.at[idx, 'N° Cotiz.'] = generar_numero_cotizacion(df_actual)
-                            fecha_hoy = datetime.now().strftime("%d/%m/%Y"); nota_cambio = f"[{fecha_hoy}] 🔄 Movido a: {nuevo_est.upper()}"; nota_previa = str(df_actual.at[idx,'Notas'])
-                            df_actual.at[idx, 'Notas'] = nota_cambio if nota_previa.strip() in ["", "nan"] else f"{nota_previa}\n{nota_cambio}"
-                            guardar_datos(df_actual); st.rerun()
-
 # --- CALENDARIO ---
 elif section == "Calendario":
     st.markdown("## 📅 Agenda Diaria"); busq_cal = st.text_input("🔍 Buscar Cliente/Empresa/Email en Agenda:")
@@ -839,3 +825,186 @@ elif section == "Calendario":
                     with st.spinner("Cerrando llamada..."):
                         df_u = get_data_main(); df_u.at[idx, 'Proxima llamada'] = ""; df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ✅ Llamada OK."; guardar_datos(df_u); st.rerun()
                 if c3.link_button("📅 Google Calendar", link_cal, use_container_width=True): pass
+
+# --- TAREAS ---
+elif section == "Tareas":
+    st.markdown("## 📋 Mis Tareas y Recordatorios")
+    df_tareas = get_data_tareas()
+    mis_tareas = df_tareas[df_tareas['Asesor'] == st.session_state.usuario_actual]
+    
+    with st.expander("➕ Cargar Nueva Tarea", expanded=True):
+        c_desc, c_f, c_h = st.columns([3, 1, 1])
+        desc_tarea = c_desc.text_input("Descripción de la tarea a recordar:")
+        f_tarea = c_f.date_input("Fecha")
+        h_tarea = c_h.time_input("Hora", value=datetime.strptime("10:00", "%H:%M").time())
+        if st.button("💾 Guardar Tarea", type="primary", use_container_width=True):
+            if not desc_tarea.strip():
+                st.warning("Debes escribir una descripción para la tarea.")
+            else:
+                with st.spinner("Guardando tarea..."):
+                    id_tarea = generar_numero_tarea(df_tareas)
+                    fh_str_tarea = f"{f_tarea.strftime('%d/%m/%Y')} {h_tarea.strftime('%H:%M')}"
+                    nueva_tarea = pd.DataFrame([{
+                        "ID Tarea": id_tarea, "Asesor": st.session_state.usuario_actual, 
+                        "Descripcion": desc_tarea, "Fecha_Hora_Vencimiento": fh_str_tarea, 
+                        "Estado": "Pendiente", "Creado": datetime.now().strftime("%d/%m/%Y %H:%M")
+                    }])
+                    guardar_datos(pd.concat([df_tareas, nueva_tarea], ignore_index=True), "Tareas")
+                    st.success("¡Tarea guardada exitosamente!")
+                    time.sleep(1)
+                    st.rerun()
+
+    st.markdown("---")
+    t_pendientes, t_completadas = st.tabs(["🔴 Pendientes", "🟢 Completadas"])
+    
+    with t_pendientes:
+        pendientes_df = mis_tareas[mis_tareas['Estado'] == 'Pendiente']
+        if pendientes_df.empty: st.info("No tenés tareas pendientes. ¡Todo al día!")
+        for idx_t, row_t in pendientes_df.iterrows():
+            st.markdown(f"<div style='background:white;padding:1em;border-radius:10px;border-left:5px solid #dc3545;margin-bottom:0.5em;color:black;'><b>📌 {row_t['Descripcion']}</b><br><small style='color:#6c757d;'>📅 Vence: {row_t['Fecha_Hora_Vencimiento']}</small></div>", unsafe_allow_html=True)
+            c_btn1, c_btn2, _ = st.columns([1, 1, 3])
+            if c_btn1.button("✅ Marcar Completada", key=f"ok_tsk_{idx_t}"):
+                with st.spinner("Actualizando..."):
+                    df_upd_tsk = get_data_tareas()
+                    df_upd_tsk.at[idx_t, 'Estado'] = 'Completada'
+                    guardar_datos(df_upd_tsk, "Tareas")
+                    st.rerun()
+            if c_btn2.button("🗑️ Borrar", key=f"del_tsk_{idx_t}"):
+                with st.spinner("Borrando..."):
+                    df_upd_tsk = get_data_tareas()
+                    df_upd_tsk.at[idx_t, 'Estado'] = 'Borrada'
+                    guardar_datos(df_upd_tsk, "Tareas")
+                    st.rerun()
+
+    with t_completadas:
+        completadas_df = mis_tareas[mis_tareas['Estado'] == 'Completada']
+        if completadas_df.empty: st.info("Aún no completaste tareas.")
+        for idx_t, row_t in completadas_df.iterrows():
+            st.markdown(f"<div style='background:#f8f9fa;padding:1em;border-radius:10px;border-left:5px solid #28a745;margin-bottom:0.5em;color:gray;'><del><b>📌 {row_t['Descripcion']}</b></del><br><small>📅 Vencía: {row_t['Fecha_Hora_Vencimiento']}</small></div>", unsafe_allow_html=True)
+
+# --- SOPORTE TÉCNICO & TICKETS ---
+elif section == "Soporte":
+    st.markdown("## 🛠️ Centro de Soporte Técnico (Tickets)")
+    tab_t, tab_s = st.tabs(["📋 Panel de Tickets", "🔍 Buscar Cliente (Abrir Ticket / Notas)"])
+    
+    with tab_t:
+        st.markdown("### 🔴 Tickets Abiertos")
+        df_abiertos = df_tickets[df_tickets['Estado'] == 'Abierto']
+        if df_abiertos.empty: st.success("No hay tickets abiertos. ¡Excelente trabajo!")
+        else:
+            for idx_t, row_t in df_abiertos.iterrows():
+                st.markdown(f"<div style='background:white;padding:1em;border-radius:10px;border-left:5px solid #dc3545;margin-bottom:0.5em;color:black;'><b>Ticket: {row_t['N° Ticket']}</b> | Fecha: {row_t['Fecha']} <br> <b>Cliente:</b> {row_t['Cliente']} ({row_t['Empresa']}) <br> <b>Asunto:</b> {row_t['Asunto']}</div>", unsafe_allow_html=True)
+                with st.expander("Resolver Ticket"):
+                    resolucion = st.text_area("Descripción de la resolución dada al cliente:", key=f"res_{idx_t}")
+                    if st.button("✅ Marcar como Resuelto", key=f"btn_res_{idx_t}", type="primary"):
+                        if not resolucion.strip(): st.error("Debe escribir una resolución para cerrar el ticket.")
+                        else:
+                            with st.spinner("Cerrando ticket..."):
+                                df_upd_t = get_data_tickets()
+                                df_upd_t.at[idx_t, 'Estado'] = 'Resuelto'
+                                df_upd_t.at[idx_t, 'Resolucion'] = resolucion
+                                df_upd_t.at[idx_t, 'Tecnico'] = st.session_state.usuario_actual
+                                guardar_datos(df_upd_t, "Tickets")
+                                st.success("✅ Ticket cerrado exitosamente.")
+                                time.sleep(1.5)
+                                st.rerun()
+        
+        st.markdown("---")
+        st.markdown("### 🟢 Tickets Resueltos")
+        df_resueltos = df_tickets[df_tickets['Estado'] == 'Resuelto'].sort_values(by='N° Ticket', ascending=False).head(20)
+        for idx_t, row_t in df_resueltos.iterrows():
+            st.markdown(f"<div style='background:white;padding:1em;border-radius:10px;border-left:5px solid #28a745;margin-bottom:0.5em;color:black;'><b>Ticket: {row_t['N° Ticket']}</b> | <b>Cliente:</b> {row_t['Cliente']} <br> <b>Asunto:</b> {row_t['Asunto']} <br> <b>Técnico:</b> {row_t['Tecnico']}</div>", unsafe_allow_html=True)
+            with st.expander("Ver Reporte y Descargar"):
+                st.write(f"**Resolución:** {row_t['Resolucion']}")
+                texto_ticket = f"--- TICKET DE SOPORTE DICAD AMÉRICA ---\nN° Ticket: {row_t['N° Ticket']}\nFecha de Apertura: {row_t['Fecha']}\nCliente: {row_t['Cliente']} ({row_t['Empresa']})\nTécnico Asignado: {row_t['Tecnico']}\n\nASUNTO REPORTADO:\n{row_t['Asunto']}\n\nRESOLUCIÓN OTORGADA:\n{row_t['Resolucion']}\n---------------------------------------\n"
+                st.download_button(label="⬇️ Descargar Reporte (.txt)", data=texto_ticket, file_name=f"Reporte_{row_t['N° Ticket']}.txt", mime="text/plain", key=f"dl_tkt_{idx_t}")
+
+    with tab_s:
+        busq_soporte = st.text_input("🔍 Buscar Cliente/Empresa/Email:")
+        df_soporte = df.copy()
+        if busq_soporte: 
+            cond_s = (df_soporte['Cliente'].astype(str).str.contains(busq_soporte, case=False, na=False) | df_soporte['Empresa'].astype(str).str.contains(busq_soporte, case=False, na=False) | df_soporte['Email'].astype(str).str.contains(busq_soporte, case=False, na=False))
+            df_soporte = df_soporte[cond_s]
+        
+        st.metric("Contactos Encontrados", len(df_soporte)); st.markdown("---")
+        
+        for idx, row in df_soporte.iterrows():
+            est_actual = row.get("Estado_Nego", "Desconocido")
+            es_cli = str(row.get('Cliente', '')).strip() in clientes_actuales
+            badge_cli = "<span style='background:#0d6efd;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:5px;vertical-align:middle;'>⭐ CLIENTE</span>" if es_cli else ""
+            
+            st.markdown(f'<div style="background:white;padding:1em;border-radius:10px;border-left:5px solid #17a2b8;margin-bottom:0.5em;box-shadow:0 1px 4px #d0d6e1;color:black;"><b>{row.get("Cliente", "")}</b>{badge_cli} ({row.get("Empresa", "")}) | 📞 {row.get("Telefono", "")} | 📧 {row.get("Email", "")} <span style="float:right;background:#f8f9fa;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:11px;">{est_actual.upper()}</span></div>', unsafe_allow_html=True)
+            
+            with st.expander(f"⚙️ Opciones de Soporte para {row.get('Cliente', '')}"):
+                c_tabs1, c_tabs2 = st.tabs(["🎫 Abrir Nuevo Ticket", "📝 Cargar Nota Rápida / Agenda"])
+                
+                with c_tabs1:
+                    asunto_ticket = st.text_area("Describa el problema o consulta del cliente:", key=f"asunto_tkt_{idx}")
+                    if st.button("➕ Generar Ticket", key=f"btn_gen_tkt_{idx}", type="primary"):
+                        if not asunto_ticket.strip(): st.warning("Escriba el asunto del ticket.")
+                        else:
+                            with st.spinner("Creando ticket..."):
+                                df_t = get_data_tickets()
+                                num_tkt = generar_numero_ticket(df_t)
+                                nuevo_tkt = pd.DataFrame([{
+                                    "N° Ticket": num_tkt, "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                    "Cliente": row.get('Cliente', ''), "Empresa": row.get('Empresa', ''),
+                                    "Asunto": asunto_ticket, "Estado": "Abierto", "Resolucion": "", "Tecnico": ""
+                                }])
+                                guardar_datos(pd.concat([df_t, nuevo_tkt], ignore_index=True), "Tickets")
+                                st.success(f"✅ ¡Éxito! Ticket {num_tkt} creado. Revisá el Panel de Tickets.")
+                                time.sleep(1.5)
+                                st.rerun()
+                
+                with c_tabs2:
+                    st.info(f"**Historial Completo:**\n{row.get('Notas', 'Sin notas.')}")
+                    c_n1, c_n2, c_n3 = st.columns([1.5, 2, 1.5])
+                    with c_n1:
+                        f_o, h_o = parsear_fecha_hora(row.get('Proxima llamada', ''))
+                        n_f = st.date_input("Agendar Contacto", value=f_o, key=f"f_s_{idx}"); n_h = st.time_input("Hora", value=h_o, key=f"h_s_{idx}")
+                    with c_n2: n_n = st.text_area("Nota rápida:", key=f"n_s_{idx}")
+                    with c_n3: 
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("💾 Guardar Nota", key=f"b_s_{idx}", use_container_width=True): 
+                            with st.spinner("Guardando nota..."):
+                                nota_final = f"🛠️ [SOPORTE]: {n_n}" if n_n else ""
+                                guardar_gestion(idx, row.get('Notas',''), nota_final, f"{n_f.strftime('%d/%m/%Y')} {n_h.strftime('%H:%M')}", row.get('Proxima llamada',''))
+                                st.rerun()
+                        if st.button("✅ Desagendar Llamada", key=f"ok_soporte_{idx}", use_container_width=True):
+                            with st.spinner("Actualizando agenda..."):
+                                df_u = get_data_main(); df_u.at[idx, 'Proxima llamada'] = ""; df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] ✅ Llamada de soporte completada."; guardar_datos(df_u); st.rerun()
+                
+                if es_admin:
+                    st.markdown("---")
+                    st.markdown("### 🔄 Reasignar Asesor (Admin)")
+                    c_rs1, c_rs2 = st.columns([3, 1])
+                    asesores_list = list(USUARIOS.keys())
+                    asesor_actual = str(row.get('Asesor', ''))
+                    idx_asesor = asesores_list.index(asesor_actual) if asesor_actual in asesores_list else 0
+                    nuevo_as = c_rs1.selectbox("Asignar a:", asesores_list, index=idx_asesor, key=f"reasig_s_{idx}")
+                    if c_rs2.button("🔁 Reasignar", key=f"btn_reasig_s_{idx}", use_container_width=True):
+                        if nuevo_as != asesor_actual:
+                            with st.spinner("Reasignando contacto..."):
+                                df_u = get_data_main()
+                                df_u.at[idx, 'Asesor'] = nuevo_as
+                                df_u.at[idx, 'Notas'] = str(df_u.at[idx, 'Notas']) + f"\n[{datetime.now().strftime('%d/%m/%Y')}] 🔄 Admin reasignó contacto de {asesor_actual} a {nuevo_as}."
+                                guardar_datos(df_u)
+                                st.rerun()
+
+# --- CATÁLOGO ---
+elif section == "Catálogo de Productos":
+    st.markdown("## 📦 Catálogo Central de Productos")
+    if es_admin:
+        with st.expander("➕ Cargar Nuevo Producto al Catálogo", expanded=False):
+            with st.form("form_nuevo_prod"):
+                c1, c2 = st.columns([2, 3]); prod_nombre = c1.text_input("Nombre del Producto / Módulo *"); prod_desc = c2.text_input("Descripción breve (Qué incluye)")
+                c3, c4, c5 = st.columns(3); prod_cat = c3.text_input("Categoría (Ej: Software, Soporte)"); prod_moneda = c4.selectbox("Moneda", ["USD", "ARS"]); prod_precio = c5.number_input("Precio de Lista", min_value=0.0)
+                if st.form_submit_button("Guardar en Catálogo", type="primary"):
+                    if not prod_nombre.strip(): st.error("Falta el nombre del producto.")
+                    else: nuevo_prod = pd.DataFrame([{"Producto": prod_nombre, "Descripcion": prod_desc, "Categoria": prod_cat, "Moneda": prod_moneda, "Precio": prod_precio}]); guardar_datos(pd.concat([df_cat, nuevo_prod], ignore_index=True), "Catalogo"); st.success("¡Producto cargado exitosamente!"); st.rerun()
+    st.markdown("---")
+    c_cat1, c_cat2 = st.columns([4,1])
+    with c_cat1: st.write("Lista de productos activos")
+    with c_cat2: 
+        if st.button("🔄 Refrescar Catálogo", use_container_width=True): st.cache_data.clear(); st.rerun()
+    st.dataframe(df_cat, use_container_width=True, hide_index=True)
