@@ -474,7 +474,9 @@ elif section == "Directorio / Leads":
                         new_row['N° Nego'] = generar_numero_negociacion(df_a)
                         new_row['Proxima llamada'] = ""
                         new_row['Creado'] = datetime.now().strftime("%d/%m/%Y")
-                        new_row['Notas'] = f"[{datetime.now().strftime('%d/%m/%Y')}] 🚀 NUEVA NEGOCIACIÓN iniciada."
+                        nota_previa = str(df_a.at[idx, 'Notas']) if pd.notna(df_a.at[idx, 'Notas']) else ""
+                        nota_nueva = f"[{datetime.now().strftime('%d/%m/%Y')}] 🚀 NUEVA NEGOCIACIÓN iniciada."
+                        new_row['Notas'] = nota_nueva if nota_previa.strip() in ["", "nan"] else f"{nota_previa}\n{nota_nueva}"
                         guardar_datos(pd.concat([df_a, pd.DataFrame([new_row])], ignore_index=True))
                         st.rerun()
 
@@ -557,7 +559,9 @@ elif section == "Instituciones":
                             new_row['N° Cotiz.'] = generar_numero_cotizacion(df_a)
                             new_row['N° Nego'] = generar_numero_negociacion(df_a)
                             new_row['Proxima llamada'] = ""
-                            new_row['Notas'] = f"[{datetime.now().strftime('%d/%m/%Y')}] 🚀 NUEVA NEGOCIACIÓN iniciada."
+                            nota_previa = str(df_a.at[idx, 'Notas']) if pd.notna(df_a.at[idx, 'Notas']) else ""
+                            nota_nueva = f"[{datetime.now().strftime('%d/%m/%Y')}] 🚀 NUEVA NEGOCIACIÓN iniciada."
+                            new_row['Notas'] = nota_nueva if nota_previa.strip() in ["", "nan"] else f"{nota_previa}\n{nota_nueva}"
                             guardar_datos(pd.concat([df_a, pd.DataFrame([new_row])], ignore_index=True))
                         else:
                             df_a.at[idx, 'Estado_Nego'] = "En Proceso"
