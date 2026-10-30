@@ -23,7 +23,7 @@ from email.utils import formataddr, make_msgid
 import pandas as pd
 import streamlit as st
 
-from prospectos import cargar_base, a_formato_campana, render_base_prospectos
+from prospectos import cargar_base, a_formato_campana, render_base_prospectos, eventos_que_coinciden
 
 COLUMNS_LOG = ["Fecha", "Asesor", "Canal", "Campaña", "Cliente", "Empresa", "Contacto", "Estado", "Detalle"]
 COLUMNS_BAJAS = ["Contacto", "Fecha", "Motivo"]
@@ -333,6 +333,23 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores, guardar_
             anios = sorted({a[:4] for a in base["Ultimo_registro"].astype(str) if a[:4].isdigit()})
             desde = g2.selectbox("Último registro desde el año", ["Todos"] + anios, key="camp_desde")
             excl_crm = g3.checkbox("Excluir los que ya están en el CRM", value=True, key="camp_exclcrm")
+            if "Eventos_detalle" not in base.columns:
+                base["Eventos_detalle"] = ""
+            h1, h2 = st.columns([1, 2])
+            q_ev = h1.text_input("🎟️ Participó en el evento…", key="camp_evq", placeholder="ej: Domina el ciclo BIM",
+                                 help="Escribí parte del nombre. No importan mayúsculas, tildes ni espacios. "
+                                      "Si no aparece alguno, probá con menos palabras (ej: 'domina').")
+            if q_ev:
+                todos = sorted({e.strip() for d in base["Eventos_detalle"].astype(str) for e in d.split("|") if e.strip()})
+                hallados = eventos_que_coinciden(todos, q_ev)
+                if not hallados and not base["Eventos_detalle"].astype(str).str.strip().any():
+                    h2.warning("La Base Prospectos no tiene el detalle de eventos. Recargala con el Excel nuevo (ver 📥 Base Prospectos).")
+                elif not hallados:
+                    h2.info("Ningún evento coincide. Probá con menos palabras.")
+                sel_ev = h2.multiselect(f"Eventos encontrados ({len(hallados)}) — destildá los que no quieras", hallados,
+                                        default=hallados, key=f"camp_evsel_{q_ev}")
+                patron = set(sel_ev)
+                base = base[base["Eventos_detalle"].astype(str).apply(lambda d: any(e.strip() in patron for e in d.split("|")))]
             base = base[base["Eventos"] >= min_ev]
             if desde != "Todos":
                 base = base[base["Ultimo_registro"].astype(str).str[:4] >= desde]

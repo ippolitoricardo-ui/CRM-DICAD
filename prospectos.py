@@ -115,7 +115,35 @@ TLD = {'ar': 'Argentina', 'mx': 'México', 'pe': 'Perú', 'cl': 'Chile', 'co': '
 # ======================================================================
 HOJA = "Base Prospectos"
 COLS = ['ID', 'Cliente', 'Nombre', 'Apellido', 'Profesion', 'Empresa', 'Cargo', 'Pais', 'Provincia', 'Ciudad', 'Telefono', 'Email',
-        'Asesor', 'Estado', 'Eventos', 'Origen', 'Primer_registro', 'Ultimo_registro', 'Fecha_Alta']
+        'Asesor', 'Estado', 'Eventos', 'Origen', 'Primer_registro', 'Ultimo_registro', 'Fecha_Alta', 'Eventos_detalle']
+
+
+def limpiar_evento(a):
+    """Nombre de archivo -> nombre de evento legible (quita extensiones, 'Informe_de_registros', letras decorativas, etc.)."""
+    s = unicodedata.normalize('NFKC', str(a))
+    s = re.sub(r'\.(xlsx|xls|csv)$', '', s, flags=re.I)
+    s = re.sub(r'\s*-\s*(Informe_de_\w+|Invitados).*$', '', s, flags=re.I)
+    s = re.sub(r'\(\d+\)|\(version\s*\d\)', '', s, flags=re.I)
+    s = re.sub(r'[_“”"¡!¿?|]+', ' ', s)
+    s = re.sub(r'[^\w\s\-.,%+]', '', s)
+    return re.sub(r'\s+', ' ', s).strip(' -.')
+
+
+def compactar(t):
+    """minúsculas, sin tildes ni espacios: 'Domina el Ciclo BIM' -> 'dominaelciclobim'."""
+    t = unicodedata.normalize('NFKD', unicodedata.normalize('NFKC', str(t))).encode('ascii', 'ignore').decode().lower()
+    return re.sub(r'[^a-z0-9]', '', t)
+
+
+STOP = {'el', 'la', 'los', 'las', 'de', 'del', 'en', 'y', 'con', 'a', 'para', 'por', 'un', 'una', 'webinar', 'seminario'}
+
+
+def eventos_que_coinciden(todos, consulta):
+    """Eventos cuyo nombre contiene todas las palabras de la consulta (sin importar espacios, tildes ni mayúsculas)."""
+    palabras = [compactar(w) for w in re.split(r'\s+', consulta) if compactar(w) and compactar(w) not in STOP]
+    if not palabras:
+        return []
+    return [e for e in todos if all(p in compactar(e) for p in palabras)]
 
 
 def _url():
@@ -255,7 +283,8 @@ def extraer(files):
                 recs.append(dict(ID="", Cliente=(nom + " " + ape).strip(), Nombre=nom, Apellido=ape, Profesion=nice(r["profesion"]),
                                  Empresa=nice(r["empresa"]), Cargo=nice(r["cargo"]), Pais=pais_norm(r["pais"]), Provincia=nice(r["provincia"]),
                                  Ciudad=nice(r["ciudad"]), Telefono=tel, Email=email, Asesor="", Estado="Prospecto", Eventos=1,
-                                 Origen=f.name.rsplit(".", 1)[0][:60], Primer_registro=hoy, Ultimo_registro=hoy, Fecha_Alta=""))
+                                 Origen=f.name.rsplit(".", 1)[0][:60], Primer_registro=hoy, Ultimo_registro=hoy, Fecha_Alta="",
+                                 Eventos_detalle=limpiar_evento(f.name)))
     return pd.DataFrame(recs, columns=COLS), avisos
 
 
@@ -282,6 +311,9 @@ def unir(base, nuevos, asesor):
                 idx.loc[k, "Eventos"] = int(fila["Eventos"] or 1) + 1
                 idx.loc[k, "Origen"] = (r["Origen"] + " | " + str(fila["Origen"]))[:300]
                 idx.loc[k, "Ultimo_registro"] = max(str(fila["Ultimo_registro"]), str(r["Ultimo_registro"]))
+                det = str(fila.get("Eventos_detalle", "") or "")
+                if r["Eventos_detalle"] and r["Eventos_detalle"] not in det:
+                    idx.loc[k, "Eventos_detalle"] = (r["Eventos_detalle"] + " | " + det).strip(" |")
         base = idx.reset_index()
     altas = nuevos[~existentes].copy()
     if not altas.empty:
@@ -315,10 +347,15 @@ def render_base_prospectos(conn, df_crm, usuario_actual, guardar_crm=None, nuevo
             st.session_state["_pros_nuevos"] = nuevos
             for a in avisos: st.warning(a)
         nuevos = st.session_state.get("_pros_nuevos")
+        reemplazar = st.checkbox("Reemplazar TODA la Base Prospectos con este archivo (solo para recargar la base completa)",
+                                 value=False, key="pros_reemplazar")
         if nuevos is not None and not nuevos.empty:
             enc_crm = set(df_crm["Email"].astype(str).str.lower().str.strip()) - {""}
             ya_crm = nuevos["Email"].str.lower().isin(enc_crm).sum()
-            res, altas, act = unir(base, nuevos, usuario_actual)
+            base_ref = base[base["Estado"] == "En CRM"] if reemplazar else base
+            res, altas, act = unir(base_ref, nuevos, usuario_actual)
+            if reemplazar:
+                st.warning("Modo reemplazo: la base actual se descarta y queda la del archivo (se conservan las marcas 'En CRM').")
             st.success(f"Encontré **{len(nuevos):,}** filas con contacto → **{altas:,} nuevos** y **{act:,} que ya estaban** "
                        f"(se actualizan). {ya_crm} ya son contactos del CRM principal.".replace(",", "."))
             st.dataframe(nuevos.head(50)[["Cliente", "Email", "Telefono", "Empresa", "Pais", "Origen"]], hide_index=True, use_container_width=True)
