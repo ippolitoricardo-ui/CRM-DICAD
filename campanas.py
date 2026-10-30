@@ -23,6 +23,8 @@ from email.utils import formataddr, make_msgid
 import pandas as pd
 import streamlit as st
 
+from prospectos import cargar_base, a_formato_campana, render_base_prospectos
+
 COLUMNS_LOG = ["Fecha", "Asesor", "Canal", "Campaña", "Cliente", "Empresa", "Contacto", "Estado", "Detalle"]
 COLUMNS_BAJAS = ["Contacto", "Fecha", "Motivo"]
 PREFIJOS_INSTITUCIONES = ('COLEGIO', 'CONSEJO', 'UNIVERSIDAD', 'FACULTAD', 'CAMARA', 'CÁMARA')
@@ -77,6 +79,20 @@ class _Seguro(dict):
 def _txt(v):
     s = "" if v is None else str(v).strip()
     return "" if s.lower() in ("nan", "none", "#error!") else s
+
+
+def saludos(d):
+    """Saludo por fila: usa el nombre de pila de la Base Prospectos si existe; si no, el primer nombre del cliente."""
+    base = d["Cliente"].apply(saludo_sugerido)
+    if "_saludo" in d.columns:
+        s = d["_saludo"].astype(str).str.strip().str.capitalize()
+        base = s.where(s != "", base)
+    return base
+
+
+def saludo_row(row):
+    s = _txt(row.get("_saludo")) if hasattr(row, "get") else ""
+    return s.capitalize() if s else saludo_sugerido(row.get("Cliente"))
 
 
 def saludo_sugerido(cliente):
@@ -266,24 +282,42 @@ def conectar_smtp(cfg):
 
 
 # ---------------------------------------------------------------- pantalla
-def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores):
+def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores, guardar_crm=None, nuevo_numero_nego=None):
     st.markdown("## 📣 Campañas: Correo · WhatsApp · LinkedIn")
+    modo = st.radio("Sección", ["📣 Enviar campaña", "📥 Base Prospectos (importar / buscar)"], horizontal=True,
+                    key="camp_modo", label_visibility="collapsed")
+    if modo.startswith("📥"):
+        render_base_prospectos(conn, df, usuario_actual, guardar_crm, nuevo_numero_nego)
+        return
     st.caption("Mensajes personalizados con los datos de cada contacto. Todo queda registrado en la hoja *Campanas_Log*.")
 
     # ---------- Segmento (común a los 3 canales)
     with st.expander("🎯 1. Elegir a quién le escribimos", expanded=True):
-        base = df.copy()
+        fuente = st.radio("Fuente de contactos", ["Clientes del CRM", "Base Prospectos"], horizontal=True, key="camp_fuente")
+        es_pros = fuente == "Base Prospectos"
+        if es_pros:
+            base = a_formato_campana(cargar_base(conn))
+            if base.empty:
+                st.info("La Base Prospectos está vacía. Cargala desde **📥 Base Prospectos (importar / buscar)**.")
+                return
+        else:
+            base = df.copy()
         for c in ["Cliente", "Empresa", "Profesion", "Pais", "Asesor", "Estado_Nego", "Email", "Telefono"]:
             if c not in base.columns:
                 base[c] = ""
         base = base[base["Cliente"].astype(str).str.strip() != ""]
-        base = base.drop_duplicates(subset=["Cliente"], keep="last")
+        if es_pros:
+            base = base.drop_duplicates(subset=["Email"], keep="first")
+            base = base.sort_values("Eventos", ascending=False)
+        else:
+            base = base.drop_duplicates(subset=["Cliente"], keep="last")
 
         f1, f2, f3 = st.columns(3)
         idx_as = 0  # arranca en "Todos los Asesores": las campañas abarcan toda la base
         asesor_f = f1.selectbox("Asesor (dueño del contacto)", lista_asesores, index=idx_as, key="camp_asesor")
         estados = sorted([e for e in base["Estado_Nego"].astype(str).unique() if _txt(e)])
-        estado_f = f2.multiselect("Estado", estados, default=[e for e in ["Potencial", "En Proceso"] if e in estados], key="camp_estado")
+        def_est = ["Prospecto"] if es_pros else ["Potencial", "En Proceso"]
+        estado_f = f2.multiselect("Estado", estados, default=[e for e in def_est if e in estados], key=f"camp_estado_{es_pros}")
         paises = sorted([p for p in base["Pais"].astype(str).unique() if _txt(p)])
         pais_f = f3.multiselect("País", paises, key="camp_pais")
 
@@ -292,8 +326,21 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores):
         prof_f = f4.multiselect("Profesión", profs, key="camp_prof")
         busq = f5.text_input("Buscar cliente / empresa", key="camp_busq")
         incluir_inst = f6.checkbox("Incluir instituciones (colegios, universidades…)", value=False, key="camp_inst")
+        if es_pros:
+            g1, g2, g3 = st.columns(3)
+            min_ev = g1.number_input("Mínimo de eventos/registros", 1, 200, 1, key="camp_minev",
+                                     help="Cuántas veces aparece en webinars/listas. Más eventos = más interesado.")
+            anios = sorted({a[:4] for a in base["Ultimo_registro"].astype(str) if a[:4].isdigit()})
+            desde = g2.selectbox("Último registro desde el año", ["Todos"] + anios, key="camp_desde")
+            excl_crm = g3.checkbox("Excluir los que ya están en el CRM", value=True, key="camp_exclcrm")
+            base = base[base["Eventos"] >= min_ev]
+            if desde != "Todos":
+                base = base[base["Ultimo_registro"].astype(str).str[:4] >= desde]
+            if excl_crm:
+                enc = set(df["Email"].astype(str).str.lower().str.strip()) - {""}
+                base = base[~base["Email"].astype(str).str.lower().isin(enc)]
 
-        if asesor_f != "Todos los Asesores":
+        if asesor_f != "Todos los Asesores" and not es_pros:
             base = base[base["Asesor"] == asesor_f]
         if estado_f:
             base = base[base["Estado_Nego"].isin(estado_f)]
@@ -353,9 +400,13 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores):
         if sin_mail:
             st.caption(f"⚠️ {sin_mail} contactos del segmento no tienen email válido y se omiten.")
 
+        if len(cand) > 500:
+            st.caption(f"Se muestran los primeros 500 de {len(cand):,} (los de más eventos primero). ".replace(",", ".") +
+                       "Al enviar, los que ya recibieron esta campaña salen de la lista y aparecen los siguientes.")
+            cand = cand.head(500)
         tabla = pd.DataFrame({
             "Enviar": True,
-            "Saludo": cand["Cliente"].apply(saludo_sugerido),
+            "Saludo": saludos(cand),
             "Cliente": cand["Cliente"].astype(str),
             "Empresa": cand["Empresa"].astype(str),
             "Email": cand["Email"].astype(str).str.strip(),
@@ -376,7 +427,7 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores):
                 st.text(completar(cuerpo_tpl, cand.loc[i0], sel.loc[i0, "Saludo"], asesor_mail))
 
         c1, c2, c3 = st.columns(3)
-        limite = c1.number_input("Máximo a enviar en esta tanda", 1, 200, min(30, max(1, len(sel))), key="mail_lim")
+        limite = c1.number_input("Máximo a enviar en esta tanda", 1, 200, min(30, max(1, len(sel))), key=f"mail_lim_{es_pros}")
         pausa = c2.number_input("Segundos entre correos", 5, 120, 15, key="mail_pausa",
                                 help="Enviar despacio protege la reputación del dominio y evita caer en spam.")
         c3.caption(f"Seleccionados: **{len(sel)}**  \nTiempo estimado: ~{int(min(len(sel), limite) * pausa / 60) + 1} min")
@@ -447,7 +498,7 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores):
         st.caption(f"{len(cand_wa)} contactos con teléfono. Los que ya registraste en esta campaña aparecen con ✅.")
         for i, row in cand_wa.head(100).iterrows():
             tel = telefono_whatsapp(row["Telefono"])
-            texto = completar(wa_tpl, row, saludo_sugerido(row["Cliente"]), asesor_firma)
+            texto = completar(wa_tpl, row, saludo_row(row), asesor_firma)
             hecho = tel in ya_wa
             c1, c2, c3 = st.columns([3, 1.2, 1.2])
             c1.markdown(f"{'✅ ' if hecho else ''}**{_txt(row['Cliente'])}** · {_txt(row['Empresa'])} · +{tel}")
@@ -467,7 +518,7 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores):
         ya_li = set(log[(log["Canal"] == "LinkedIn") & (log["Campaña"] == campana)]["Cliente"].astype(str))
         for i, row in base.head(100).iterrows():
             cli = _txt(row["Cliente"])
-            texto = completar(li_tpl, row, saludo_sugerido(cli), asesor_firma)
+            texto = completar(li_tpl, row, saludo_row(row), asesor_firma)
             hecho = cli in ya_li
             with st.expander(f"{'✅ ' if hecho else ''}{cli} · {_txt(row['Empresa'])}"):
                 if len(texto) > 300:
