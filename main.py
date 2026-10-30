@@ -1019,4 +1019,5 @@ elif section == "Catálogo de Productos":
 
 # --- CAMPAÑAS (Correo / WhatsApp / LinkedIn) ---
 elif section == "Campañas" and st.session_state.usuario_actual in USUARIOS_CAMPANAS:
-    render_campanas(df, conn, st.session_state.usuario_actual, es_admin, lista_asesores)
+    render_campanas(df, conn, st.session_state.usuario_actual, es_admin, lista_asesores,
+                    guardar_crm=guardar_datos, nuevo_numero_nego=generar_numero_negociacion)

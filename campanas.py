@@ -280,7 +280,7 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores):
         base = base.drop_duplicates(subset=["Cliente"], keep="last")
 
         f1, f2, f3 = st.columns(3)
-        idx_as = lista_asesores.index(usuario_actual) if usuario_actual in lista_asesores else 0
+        idx_as = 0  # arranca en "Todos los Asesores": las campañas abarcan toda la base
         asesor_f = f1.selectbox("Asesor (dueño del contacto)", lista_asesores, index=idx_as, key="camp_asesor")
         estados = sorted([e for e in base["Estado_Nego"].astype(str).unique() if _txt(e)])
         estado_f = f2.multiselect("Estado", estados, default=[e for e in ["Potencial", "En Proceso"] if e in estados], key="camp_estado")
