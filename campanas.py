@@ -12,7 +12,9 @@ import re
 import ssl
 import time
 import smtplib
+import os
 import urllib.parse
+from email.mime.image import MIMEImage
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -46,6 +48,21 @@ PLANTILLA_WHATSAPP = ("Hola {saludo}, ¿cómo está? Le escribe {asesor} de DICA
 PLANTILLA_LINKEDIN = ("Hola {saludo}, soy {asesor} de DICAD AMÉRICA. Trabajamos con profesionales de la "
                       "construcción con STRAKON, software de diseño y detallado estructural. "
                       "Me gustaría sumarlo a mi red y compartirle algunos casos que pueden interesarle para {empresa}.")
+
+# ---- Asesor virtual y firma de los correos de campaña.
+# Cualquiera de estos datos se puede pisar desde secrets.toml, sección [email]
+# (ej. asesor = "Otto", firma_cargo = "...", linkedin = "https://...").
+FIRMA_DEFAULT = {
+    "asesor": "Otto",
+    "firma_nombre": "Otto ventas",
+    "firma_cargo": "Sales executive,",
+    "firma_web": "https://dicadamerica.store/",
+    "firma_telefono": "+ 54 9 3541 396008",
+    "firma_direccion": "Lisandro de la Torre N° 747. VCP. Cba. CPA 5152.",
+    "linkedin": "", "facebook": "", "youtube": "", "instagram": "",
+}
+CARPETA_FIRMA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "firma")
+REDES = ["linkedin", "facebook", "youtube", "instagram"]
 
 PIE_BAJA = "Si no desea recibir más comunicaciones de DICAD AMÉRICA, responda este correo con la palabra BAJA."
 
@@ -161,27 +178,78 @@ def cuenta_correo(usuario_actual):
     return cfg
 
 
-def _html(texto, firma):
-    esc = (texto.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
-    cuerpo = esc.replace("\n", "<br>")
-    firma_html = firma.replace("\n", "<br>") if firma else ""
+def datos_firma(cfg):
+    d = dict(FIRMA_DEFAULT)
+    for k in d:
+        if _txt(cfg.get(k)):
+            d[k] = _txt(cfg.get(k))
+    d["firma_email"] = _txt(cfg.get("firma_email")) or cfg["usuario"]
+    return d
+
+
+def _esc(t):
+    return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def firma_html(d):
+    """Firma institucional DICAD (logo + datos + redes). Imágenes embebidas, no dependen de un servidor."""
+    lbl = 'style="font-weight:bold;padding:1px 12px 1px 0;white-space:nowrap;vertical-align:top"'
+    val = 'style="padding:1px 0;vertical-align:top"'
+    web = d["firma_web"]
+    filas = (f'<tr><td {lbl}>Correo electrónico:</td><td {val}><a href="mailto:{d["firma_email"]}" style="color:#1a73e8">{_esc(d["firma_email"])}</a></td></tr>'
+             f'<tr><td {lbl}>Página web:</td><td {val}><a href="{web}" style="color:#1a73e8">{_esc(web)}</a></td></tr>'
+             f'<tr><td {lbl}>Teléfono:</td><td {val}>{_esc(d["firma_telefono"])}</td></tr>'
+             f'<tr><td {lbl}>Dirección:</td><td {val}>{_esc(d["firma_direccion"])}</td></tr>')
+    redes = "".join(
+        f'<a href="{d[r]}" style="text-decoration:none;margin-right:6px"><img src="cid:{r}@dicad" width="24" height="24" alt="{r}" style="border:0"></a>'
+        for r in REDES if d.get(r) and os.path.exists(os.path.join(CARPETA_FIRMA, f"{r}.png")))
+    logo = ('<img src="cid:logo@dicad" width="140" height="140" alt="DICAD AMERICA" style="display:block;border:0">'
+            if os.path.exists(os.path.join(CARPETA_FIRMA, "logo.png")) else "")
+    return (
+        '<table cellpadding="0" cellspacing="0" style="font-family:Arial,sans-serif;font-size:13px;color:#222;border-collapse:collapse">'
+        f'<tr><td colspan="2" style="padding-bottom:6px"><b style="font-size:14px">{_esc(d["firma_nombre"])}</b><br>{_esc(d["firma_cargo"])}</td></tr>'
+        '<tr><td colspan="2" style="border-top:2px solid #a32a2f;padding:0;height:8px;line-height:8px;font-size:1px">&nbsp;</td></tr>'
+        f'<tr><td style="vertical-align:top;padding-right:16px">{logo}</td>'
+        f'<td style="vertical-align:top"><table cellpadding="0" cellspacing="0" style="font-size:13px;color:#222">{filas}</table></td></tr>'
+        + (f'<tr><td colspan="2" style="padding-top:12px">{redes}</td></tr>' if redes else "")
+        + '</table>')
+
+
+def firma_texto(d):
+    return (f"{d['firma_nombre']}\n{d['firma_cargo']}\n"
+            f"Correo electrónico: {d['firma_email']}\nPágina web: {d['firma_web']}\n"
+            f"Teléfono: {d['firma_telefono']}\nDirección: {d['firma_direccion']}")
+
+
+def _html(texto, d):
+    cuerpo = _esc(texto).replace("\n", "<br>")
     return (f'<div style="font-family:Arial,sans-serif;font-size:14px;color:#222;line-height:1.5">{cuerpo}'
-            f'<br><br>{firma_html}'
-            f'<br><br><span style="font-size:11px;color:#888">{PIE_BAJA}</span></div>')
+            f'<br><br>{firma_html(d)}'
+            f'<br><span style="font-size:11px;color:#888">{PIE_BAJA}</span></div>')
 
 
 def armar_mensaje(cfg, destino, asunto, cuerpo):
-    firma = _txt(cfg.get("firma"))
-    msg = MIMEMultipart("alternative")
+    d = datos_firma(cfg)
+    msg = MIMEMultipart("related")
     msg["From"] = formataddr((cfg["nombre"], cfg["usuario"]))
     msg["To"] = destino
     msg["Subject"] = asunto
     msg["Reply-To"] = cfg.get("responder_a", cfg["usuario"])
     msg["Message-ID"] = make_msgid(domain=cfg["usuario"].split("@")[-1])
     msg["List-Unsubscribe"] = f"<mailto:{cfg.get('responder_a', cfg['usuario'])}?subject=BAJA>"
-    texto_plano = f"{cuerpo}\n\n{firma}\n\n{PIE_BAJA}"
-    msg.attach(MIMEText(texto_plano, "plain", "utf-8"))
-    msg.attach(MIMEText(_html(cuerpo, firma), "html", "utf-8"))
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(f"{cuerpo}\n\n{firma_texto(d)}\n\n{PIE_BAJA}", "plain", "utf-8"))
+    alt.attach(MIMEText(_html(cuerpo, d), "html", "utf-8"))
+    msg.attach(alt)
+    imagenes = ["logo"] + [r for r in REDES if d.get(r)]
+    for nombre in imagenes:
+        ruta = os.path.join(CARPETA_FIRMA, f"{nombre}.png")
+        if os.path.exists(ruta):
+            with open(ruta, "rb") as f:
+                img = MIMEImage(f.read(), _subtype="png")
+            img.add_header("Content-ID", f"<{nombre}@dicad>")
+            img.add_header("Content-Disposition", "inline", filename=f"{nombre}.png")
+            msg.attach(img)
     return msg
 
 
@@ -265,11 +333,12 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores):
     # ================================================================ CORREO
     with t_mail:
         cfg = cuenta_correo(usuario_actual)
+        asesor_mail = datos_firma(cfg)["asesor"] if cfg else FIRMA_DEFAULT["asesor"]
         if not cfg:
             st.error("Falta configurar la cuenta de correo en `.streamlit/secrets.toml` (sección `[email]`). "
                      "Ver INSTRUCCIONES_CAMPANAS.md.")
         else:
-            st.caption(f"Se envía desde: **{cfg['nombre']} <{cfg['usuario']}>**")
+            st.caption(f"Se envía desde: **{cfg['nombre']} <{cfg['usuario']}>** · Firma y presentación como asesor virtual: **{asesor_mail}**")
 
         st.markdown(VARIABLES_AYUDA)
         asunto_tpl = st.text_input("Asunto", value=PLANTILLA_EMAIL_ASUNTO, key="mail_asunto")
@@ -303,8 +372,8 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores):
             i0 = sel.index[0]
             st.markdown("**3. Vista previa (primer contacto):**")
             with st.container(border=True):
-                st.markdown(f"**Para:** {sel.loc[i0, 'Email']}  \n**Asunto:** {completar(asunto_tpl, cand.loc[i0], sel.loc[i0, 'Saludo'], asesor_firma)}")
-                st.text(completar(cuerpo_tpl, cand.loc[i0], sel.loc[i0, "Saludo"], asesor_firma))
+                st.markdown(f"**Para:** {sel.loc[i0, 'Email']}  \n**Asunto:** {completar(asunto_tpl, cand.loc[i0], sel.loc[i0, 'Saludo'], asesor_mail)}")
+                st.text(completar(cuerpo_tpl, cand.loc[i0], sel.loc[i0, "Saludo"], asesor_mail))
 
         c1, c2, c3 = st.columns(3)
         limite = c1.number_input("Máximo a enviar en esta tanda", 1, 200, min(30, max(1, len(sel))), key="mail_lim")
@@ -317,8 +386,8 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores):
             i0 = sel.index[0]
             try:
                 srv = conectar_smtp(cfg)
-                msg = armar_mensaje(cfg, cfg["usuario"], "[PRUEBA] " + completar(asunto_tpl, cand.loc[i0], sel.loc[i0, "Saludo"], asesor_firma),
-                                    completar(cuerpo_tpl, cand.loc[i0], sel.loc[i0, "Saludo"], asesor_firma))
+                msg = armar_mensaje(cfg, cfg["usuario"], "[PRUEBA] " + completar(asunto_tpl, cand.loc[i0], sel.loc[i0, "Saludo"], asesor_mail),
+                                    completar(cuerpo_tpl, cand.loc[i0], sel.loc[i0, "Saludo"], asesor_mail))
                 srv.sendmail(cfg["usuario"], [cfg["usuario"]], msg.as_string())
                 srv.quit()
                 st.success(f"Prueba enviada a {cfg['usuario']}. Revisá cómo se ve antes de enviar la campaña.")
@@ -340,8 +409,8 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores):
                 for n, (i, r) in enumerate(lote.iterrows(), start=1):
                     row = cand.loc[i]
                     try:
-                        msg = armar_mensaje(cfg, r["Email"], completar(asunto_tpl, row, r["Saludo"], asesor_firma),
-                                            completar(cuerpo_tpl, row, r["Saludo"], asesor_firma))
+                        msg = armar_mensaje(cfg, r["Email"], completar(asunto_tpl, row, r["Saludo"], asesor_mail),
+                                            completar(cuerpo_tpl, row, r["Saludo"], asesor_mail))
                         srv.sendmail(cfg["usuario"], [r["Email"]], msg.as_string())
                         filas.append(_fila_log(asesor_firma, "Correo", campana, row, r["Email"], "Enviado"))
                         ok += 1

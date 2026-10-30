@@ -21,6 +21,7 @@ st.set_page_config(page_title="CRM DICAD AMÉRICA", layout="wide")
 USUARIOS = st.secrets["passwords"]
 ADMINISTRADORES = ["Ricardo Ippolito", "Aldana Rodriguez Masin"]
 TECNICOS = ["Martin Eduardo Luna"]
+USUARIOS_CAMPANAS = ["Ricardo Ippolito"]  # únicos que ven y envían Campañas
 
 GSHEET_URL = st.secrets.get("SHEET_URL", "")
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -296,8 +297,10 @@ with st.sidebar:
         opciones_menu = ["Soporte", "Calendario", "Tareas"]
         iconos_menu = ["headset", "calendar-date", "list-check"]
     else: 
-        opciones_menu = ["Dashboard", "Soporte", "Directorio / Leads", "Instituciones", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario", "Tareas", "Catálogo de Productos", "Campañas"]
-        iconos_menu = ["bar-chart-line", "headset", "person-lines-fill", "bank", "kanban", "briefcase", "person-plus", "calendar-date", "list-check", "box-seam", "megaphone"]
+        opciones_menu = ["Dashboard", "Soporte", "Directorio / Leads", "Instituciones", "Pipeline", "Negociaciones", "Agregar Cliente", "Calendario", "Tareas", "Catálogo de Productos"]
+        iconos_menu = ["bar-chart-line", "headset", "person-lines-fill", "bank", "kanban", "briefcase", "person-plus", "calendar-date", "list-check", "box-seam"]
+        if st.session_state.usuario_actual in USUARIOS_CAMPANAS:
+            opciones_menu.append("Campañas"); iconos_menu.append("megaphone")
     section = option_menu(None, opciones_menu, icons=iconos_menu, default_index=0 if es_tecnico else 5, styles={"container": {"padding": "5px!important", "background-color": "#F0F2F6", "border-radius": "10px"},"icon": {"color": "#333333", "font-size": "18px"}, "nav-link": {"color": "#333333", "font-size": "16px", "text-align": "left", "margin":"2px 0px", "--hover-color": "#E0E0E0"},"nav-link-selected": {"background-color": "#FF6600", "color": "white"}})
     st.markdown("---")
     rol_badge = '🛠️ Técnico' if es_tecnico else ('👑 Admin' if es_admin else '💼 Asesor')
@@ -1015,5 +1018,5 @@ elif section == "Catálogo de Productos":
     st.dataframe(df_cat, use_container_width=True, hide_index=True)
 
 # --- CAMPAÑAS (Correo / WhatsApp / LinkedIn) ---
-elif section == "Campañas":
+elif section == "Campañas" and st.session_state.usuario_actual in USUARIOS_CAMPANAS:
     render_campanas(df, conn, st.session_state.usuario_actual, es_admin, lista_asesores)
