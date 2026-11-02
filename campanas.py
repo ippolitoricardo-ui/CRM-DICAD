@@ -450,7 +450,7 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores, guardar_
             st.markdown("**3. Vista previa (primer contacto):**")
             with st.container(border=True):
                 st.markdown(f"**Para:** {sel.loc[i0, 'Email']}  \n**Asunto:** {completar(asunto_tpl, cand.loc[i0], sel.loc[i0, 'Saludo'], asesor_mail)}")
-                st.text(completar(cuerpo_tpl, cand.loc[i0], sel.loc[i0, "Saludo"], asesor_mail))
+                st.markdown(completar(cuerpo_tpl, cand.loc[i0], sel.loc[i0, "Saludo"], asesor_mail).replace("\n", "  \n"))
 
         c1, c2, c3 = st.columns(3)
         limite = c1.number_input("Máximo a enviar en esta tanda", 1, 200, min(30, max(1, len(sel))), key=f"mail_lim_{es_pros}")
