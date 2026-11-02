@@ -30,7 +30,8 @@ COLUMNS_BAJAS = ["Contacto", "Fecha", "Motivo"]
 PREFIJOS_INSTITUCIONES = ('COLEGIO', 'CONSEJO', 'UNIVERSIDAD', 'FACULTAD', 'CAMARA', 'CÁMARA')
 
 VARIABLES_AYUDA = ("**Variables disponibles:** `{saludo}` (nombre para el saludo, editable en la tabla), "
-                   "`{cliente}` (nombre completo), `{empresa}`, `{profesion}`, `{cargo}`, `{pais}`, `{ciudad}`, `{asesor}`")
+                   "`{cliente}` (nombre completo), `{empresa}`, `{profesion}`, `{cargo}`, `{pais}`, `{ciudad}`, `{asesor}`.  \n"
+                   "**Negrita:** escribí el texto entre dos asteriscos, por ejemplo `**Modo Turbo:**`.")
 
 PLANTILLA_EMAIL_ASUNTO = "{saludo}, una herramienta para acelerar sus proyectos estructurales"
 PLANTILLA_EMAIL_CUERPO = """Estimado/a {saludo}:
@@ -237,8 +238,16 @@ def firma_texto(d):
             f"Teléfono: {d['firma_telefono']}\nDirección: {d['firma_direccion']}")
 
 
+NEGRITA = re.compile(r"\*\*(.+?)\*\*")
+
+
+def sin_negritas(texto):
+    """Versión de texto plano: quita los ** de las negritas."""
+    return NEGRITA.sub(r"\1", texto)
+
+
 def _html(texto, d):
-    cuerpo = _esc(texto).replace("\n", "<br>")
+    cuerpo = NEGRITA.sub(r"<b>\1</b>", _esc(texto)).replace("\n", "<br>")
     return (f'<div style="font-family:Arial,sans-serif;font-size:14px;color:#222;line-height:1.5">{cuerpo}'
             f'<br><br>{firma_html(d)}'
             f'<br><span style="font-size:11px;color:#888">{PIE_BAJA}</span></div>')
@@ -254,7 +263,7 @@ def armar_mensaje(cfg, destino, asunto, cuerpo):
     msg["Message-ID"] = make_msgid(domain=cfg["usuario"].split("@")[-1])
     msg["List-Unsubscribe"] = f"<mailto:{cfg.get('responder_a', cfg['usuario'])}?subject=BAJA>"
     alt = MIMEMultipart("alternative")
-    alt.attach(MIMEText(f"{cuerpo}\n\n{firma_texto(d)}\n\n{PIE_BAJA}", "plain", "utf-8"))
+    alt.attach(MIMEText(f"{sin_negritas(cuerpo)}\n\n{firma_texto(d)}\n\n{PIE_BAJA}", "plain", "utf-8"))
     alt.attach(MIMEText(_html(cuerpo, d), "html", "utf-8"))
     msg.attach(alt)
     imagenes = ["logo"] + [r for r in REDES if d.get(r)]
