@@ -315,55 +315,70 @@ clientes_actuales = df[df['Estado_Nego'] == 'Ganada']['Cliente'].astype(str).str
 # --- CALCULADORA DE PRODUCTOS JSON ---
 def modulo_calculadora(key_prefix):
     st.markdown("### 🛒 Configurador de Cotización")
-    if df_cat.empty: st.warning("⚠️ No hay productos en el catálogo."); return st.text_input("Monto", key=f"mm_{key_prefix}"), "", ""
-    opciones_base = df_cat['Producto'].tolist(); opciones_prods = []
-    for p in opciones_base: opciones_prods.extend([f"{p} (Línea 1)", f"{p} (Línea 2)", f"{p} (Línea 3)", f"{p} (Línea 4)", f"{p} (Línea 5)"])
-    seleccion = st.multiselect("Seleccioná los softwares a cotizar:", opciones_prods, key=f"sel_{key_prefix}")
-    subtotal_general = 0.0; total_final = 0.0; ahorro_total = 0.0; moneda_ref = "USD"; json_data = []
-    if seleccion:
-        st.markdown("---")
+    subtotal_general = 0.0; total_final = 0.0; ahorro_total = 0.0; json_data = []
+
+    def _linea(nombre, desc, precio_uni, idx, cant_def=1):
+        """Cantidad + descuento para una línea; devuelve el dict para el presupuesto."""
+        nonlocal subtotal_general, total_final, ahorro_total
+        c_q, c_d1, c_d2, c_d3 = st.columns([1, 1.5, 1.5, 2])
+        cantidad = c_q.number_input("Cantidad", min_value=1, value=cant_def, key=f"cant_{key_prefix}_{idx}")
+        tipo_desc = c_d1.selectbox("Descuento en:", ["Porcentaje (%)", "Monto Fijo"], key=f"td_{key_prefix}_{idx}")
+        val_desc = c_d2.number_input("Valor Desc.", min_value=0.0, value=0.0, key=f"vd_{key_prefix}_{idx}")
+        subtotal_linea = precio_uni * cantidad
+        if "Porcentaje" in tipo_desc:
+            monto_desc = subtotal_linea * (val_desc / 100); txt_desc = f"{val_desc}%" if val_desc > 0 else "0%"
+        else:
+            monto_desc = val_desc; txt_desc = f"-USD {val_desc:,.0f}" if val_desc > 0 else "0"
+        precio_final_prod = subtotal_linea - monto_desc
+        c_d3.markdown(f"<div style='margin-top:28px; font-weight:bold; color:#28a745; font-size:15px;'>👉 Total Línea: USD {precio_final_prod:,.0f}</div>", unsafe_allow_html=True)
+        subtotal_general += subtotal_linea; total_final += precio_final_prod; ahorro_total += monto_desc
+        st.markdown("<hr style='margin:10px 0; border: 0; border-top: 1px dashed #ccc;'>", unsafe_allow_html=True)
+        return {"nombre": nombre, "desc": desc, "cantidad": f"{cantidad} pcs.", "precio": f"USD {precio_uni:,.0f}",
+                "desc_val": txt_desc, "importe": f"USD {precio_final_prod:,.0f}",
+                "raw_precio": float(precio_uni), "raw_importe": float(precio_final_prod)}
+
+    # --- 1) Productos del catálogo
+    seleccion = []
+    if df_cat.empty:
+        st.info("No hay productos en el catálogo. Podés cotizar con ítems libres (abajo).")
+    else:
+        cats = sorted([c for c in df_cat['Categoria'].astype(str).str.strip().unique() if c and c.lower() != 'nan'])
+        cat_sel = st.multiselect("Filtrar por línea / categoría (opcional):", cats, key=f"cat_{key_prefix}") if cats else []
+        df_vis = df_cat[df_cat['Categoria'].astype(str).str.strip().isin(cat_sel)] if cat_sel else df_cat
+        opciones_prods = []
+        for p in df_vis['Producto'].tolist():
+            opciones_prods.extend([f"{p} (Línea {n})" for n in range(1, 6)])
+        seleccion = st.multiselect("Seleccioná los productos del catálogo a cotizar:", opciones_prods, key=f"sel_{key_prefix}")
+        if seleccion:
+            st.markdown("---")
         for i, s in enumerate(seleccion):
             nombre_real = s.rsplit(' (Línea', 1)[0]
             fila_prod = df_cat[df_cat['Producto'] == nombre_real].iloc[0]; precio_uni = limpiar_monto_para_suma(fila_prod['Precio'])
-            if fila_prod['Moneda']: moneda_ref = "USD"
             st.markdown(f"**📦 {nombre_real}** (Precio Unitario: USD {precio_uni:,.0f})")
-            c_q, c_d1, c_d2, c_d3 = st.columns([1, 1.5, 1.5, 2])
-            cantidad = c_q.number_input("Cantidad", min_value=1, value=1, key=f"cant_{key_prefix}_{i}")
-            tipo_desc = c_d1.selectbox("Descuento en:", ["Porcentaje (%)", "Monto Fijo"], key=f"td_{key_prefix}_{i}")
-            val_desc = c_d2.number_input("Valor Desc.", min_value=0.0, value=0.0, key=f"vd_{key_prefix}_{i}")
-            
-            subtotal_linea = precio_uni * cantidad
-            
-            if "Porcentaje" in tipo_desc: 
-                monto_desc = subtotal_linea * (val_desc / 100)
-                txt_desc = f"{val_desc}%" if val_desc > 0 else "0%"
-            else: 
-                monto_desc = val_desc
-                txt_desc = f"-USD {val_desc:,.0f}" if val_desc > 0 else "0"
-                
-            precio_final_prod = subtotal_linea - monto_desc
-            c_d3.markdown(f"<div style='margin-top:28px; font-weight:bold; color:#28a745; font-size:15px;'>👉 Total Línea: USD {precio_final_prod:,.0f}</div>", unsafe_allow_html=True)
-            
-            subtotal_general += subtotal_linea
-            total_final += precio_final_prod
-            ahorro_total += monto_desc
-            
-            json_data.append({
-                "nombre": nombre_real, 
-                "desc": fila_prod['Descripcion'], 
-                "cantidad": f"{cantidad} pcs.", 
-                "precio": f"USD {precio_uni:,.0f}", 
-                "desc_val": txt_desc, 
-                "importe": f"USD {precio_final_prod:,.0f}", 
-                "raw_precio": float(precio_uni), 
-                "raw_importe": float(precio_final_prod)
-            })
-            
-            st.markdown("<hr style='margin:10px 0; border: 0; border-top: 1px dashed #ccc;'>", unsafe_allow_html=True)
+            json_data.append(_linea(nombre_real, fila_prod['Descripcion'], precio_uni, i))
+
+    # --- 2) Ítems libres (productos nuevos o servicios que no están en el catálogo)
+    with st.expander("✍️ Agregar ítems libres (fuera del catálogo)", expanded=df_cat.empty):
+        n_lib = st.number_input("¿Cuántos ítems libres?", min_value=0, max_value=6, value=0, key=f"nlib_{key_prefix}")
+        for j in range(int(n_lib)):
+            st.markdown(f"**✍️ Ítem libre {j + 1}**")
+            l1, l2, l3 = st.columns([2, 3, 1.2])
+            nom = l1.text_input("Nombre del ítem", key=f"lnom_{key_prefix}_{j}", placeholder="ej: Desarrollo a medida")
+            des = l2.text_input("Descripción", key=f"ldes_{key_prefix}_{j}", placeholder="ej: 40 hs de programación")
+            pre = l3.number_input("Precio unit. USD", min_value=0.0, value=0.0, key=f"lpre_{key_prefix}_{j}")
+            if nom.strip():
+                json_data.append(_linea(nom.strip(), des.strip(), pre, f"lib{j}"))
+            else:
+                st.caption("Completá el nombre para que el ítem se sume a la cotización.")
+
+    if json_data:
+        if len(json_data) > 4:
+            st.warning("⚠️ La plantilla de presupuesto tiene lugar para 4 líneas. Con más ítems, revisá el Excel generado.")
         st.success(f"### 💰 TOTAL FINAL A COBRAR: USD {total_final:,.2f}")
         texto_ahorro = f"Ahorro USD {ahorro_total:,.0f}" if ahorro_total > 0 else "Sin descuento"
         return f"USD {total_final:,.0f}", json.dumps(json_data), texto_ahorro
-    else: st.info("Seleccioná al menos un producto."); return "", "", ""
+    st.info("Seleccioná al menos un producto o agregá un ítem libre.")
+    return "", "", ""
 
 # --- DASHBOARD ---
 if section == "Dashboard":
