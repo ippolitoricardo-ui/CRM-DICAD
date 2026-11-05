@@ -187,7 +187,8 @@ def get_data_cat():
     if not df.empty: df.columns = df.columns.astype(str).str.strip()
     for col in COLUMNS_CAT:
         if col not in df.columns: df[col] = ""
-    return df.fillna('')
+    df = df.fillna('')
+    return df[df['Producto'].astype(str).str.strip() != ''].reset_index(drop=True)
 
 @st.cache_data(ttl=30)
 def get_data_tickets():
@@ -1017,20 +1018,55 @@ elif section == "Soporte":
 # --- CATÁLOGO ---
 elif section == "Catálogo de Productos":
     st.markdown("## 📦 Catálogo Central de Productos")
+    if st.session_state.pop("cat_ok", None):
+        st.success(st.session_state.pop("cat_msg", "Catálogo actualizado."))
     if es_admin:
         with st.expander("➕ Cargar Nuevo Producto al Catálogo", expanded=False):
-            with st.form("form_nuevo_prod"):
-                c1, c2 = st.columns([2, 3]); prod_nombre = c1.text_input("Nombre del Producto / Módulo *"); prod_desc = c2.text_input("Descripción breve (Qué incluye)")
-                c3, c4, c5 = st.columns(3); prod_cat = c3.text_input("Categoría (Ej: Software, Soporte)"); prod_moneda = c4.selectbox("Moneda", ["USD", "ARS"]); prod_precio = c5.number_input("Precio de Lista", min_value=0.0)
+            with st.form("form_nuevo_prod", clear_on_submit=True):
+                c1, c2 = st.columns([2, 3]); prod_nombre = c1.text_input("Nombre del Producto / Módulo *"); prod_desc = c2.text_area("Descripción (Qué incluye)", height=100)
+                cats_exist = sorted([c for c in df_cat['Categoria'].astype(str).str.strip().unique() if c])
+                c3, c4, c5 = st.columns(3)
+                prod_cat = c3.text_input("Categoría (Ej: Software, Programación)", help=("Existentes: " + ", ".join(cats_exist)) if cats_exist else None)
+                prod_moneda = c4.selectbox("Moneda", ["USD", "ARS"])
+                prod_precio = c5.number_input("Precio de Lista *", min_value=0.0, step=1.0, format="%.2f",
+                                              help="Escribí solo números, sin puntos de miles. Ej: 2248 o 2248.50")
+                st.caption("Tocá **Guardar** una sola vez: al terminar aparece un aviso verde y el producto se ve en la lista de abajo.")
                 if st.form_submit_button("Guardar en Catálogo", type="primary"):
-                    if not prod_nombre.strip(): st.error("Falta el nombre del producto.")
-                    else: nuevo_prod = pd.DataFrame([{"Producto": prod_nombre, "Descripcion": prod_desc, "Categoria": prod_cat, "Moneda": prod_moneda, "Precio": prod_precio}]); guardar_datos(pd.concat([df_cat, nuevo_prod], ignore_index=True), "Catalogo"); st.success("¡Producto cargado exitosamente!"); st.rerun()
+                    nombre_l = prod_nombre.strip()
+                    if not nombre_l:
+                        st.error("Falta el nombre del producto.")
+                    elif prod_precio <= 0:
+                        st.error("El precio está en 0. Escribilo de nuevo (solo números) y volvé a guardar.")
+                    elif (df_cat['Producto'].astype(str).str.strip().str.lower() == nombre_l.lower()).any():
+                        st.error("Ya existe un producto con ese nombre. Para cambiarle el precio, editalo en la tabla de abajo.")
+                    else:
+                        with st.spinner("Guardando..."):
+                            nuevo_prod = pd.DataFrame([{"Producto": nombre_l, "Descripcion": prod_desc.strip(), "Categoria": prod_cat.strip(),
+                                                        "Moneda": prod_moneda, "Precio": f"{prod_precio:.2f}".rstrip('0').rstrip('.')}])
+                            guardar_datos(pd.concat([df_cat, nuevo_prod], ignore_index=True), "Catalogo")
+                        st.session_state["cat_ok"] = True
+                        st.session_state["cat_msg"] = f"✅ '{nombre_l}' guardado a {prod_moneda} {prod_precio:,.2f}."
+                        st.rerun()
     st.markdown("---")
     c_cat1, c_cat2 = st.columns([4,1])
-    with c_cat1: st.write("Lista de productos activos")
-    with c_cat2: 
+    with c_cat1: st.write("Lista de productos activos" + (" — podés editar celdas o borrar filas (seleccioná la fila y tocá 🗑️) y luego **Guardar cambios**." if es_admin else ""))
+    with c_cat2:
         if st.button("🔄 Refrescar Catálogo", use_container_width=True): st.cache_data.clear(); st.rerun()
-    st.dataframe(df_cat, use_container_width=True, hide_index=True)
+    if es_admin:
+        cat_edit = st.data_editor(df_cat[COLUMNS_CAT], use_container_width=True, hide_index=True, num_rows="dynamic", key="cat_editor",
+                                  column_config={"Descripcion": st.column_config.TextColumn(width="large"),
+                                                 "Moneda": st.column_config.SelectboxColumn(options=["USD", "ARS"])})
+        if st.button("💾 Guardar cambios del catálogo", type="primary"):
+            limpio = cat_edit.fillna('')
+            limpio = limpio[limpio['Producto'].astype(str).str.strip() != '']
+            ceros = limpio[limpio['Precio'].apply(limpiar_monto_para_suma) <= 0]['Producto'].tolist()
+            with st.spinner("Guardando..."):
+                guardar_datos(limpio.reset_index(drop=True), "Catalogo")
+            st.session_state["cat_ok"] = True
+            st.session_state["cat_msg"] = "✅ Catálogo actualizado." + (f" Ojo: sin precio → {', '.join(ceros)}" if ceros else "")
+            st.rerun()
+    else:
+        st.dataframe(df_cat, use_container_width=True, hide_index=True)
 
 # --- CAMPAÑAS (Correo / WhatsApp / LinkedIn) ---
 elif section == "Campañas" and st.session_state.usuario_actual in USUARIOS_CAMPANAS:
