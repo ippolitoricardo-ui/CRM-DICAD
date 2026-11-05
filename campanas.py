@@ -396,10 +396,15 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores, guardar_
         st.info("No hay contactos con esos filtros.")
         return
 
-    campana = st.text_input("Nombre de la campaña (para el historial y para no repetir envíos)",
-                            value=f"STRAKON {datetime.now().strftime('%m-%Y')}", key="camp_nombre")
-    asesor_firma = usuario_actual
     log = _leer_hoja(conn, "Campanas_Log", COLUMNS_LOG)
+    # Propone por defecto la última campaña enviada, así al recargar la página no se pierde el nombre
+    previas = [c for c in log["Campaña"].astype(str).str.strip().tolist() if c]
+    campana = st.text_input("Nombre de la campaña (para el historial y para no repetir envíos)",
+                            value=previas[-1] if previas else f"STRAKON {datetime.now().strftime('%m-%Y')}",
+                            key="camp_nombre").strip()
+    if previas:
+        st.caption("Campañas en el historial: " + " · ".join(f"`{c}`" for c in dict.fromkeys(reversed(previas))))
+    asesor_firma = usuario_actual
 
     t_mail, t_wa, t_li, t_hist = st.tabs(["✉️ Correo (automático)", "💬 WhatsApp", "🔗 LinkedIn", "📜 Historial y Bajas"])
 
@@ -419,10 +424,14 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores, guardar_
 
         cand = base[base["Email"].apply(email_valido)].copy()
         sin_mail = len(base) - len(cand)
-        ya = set(log[(log["Canal"] == "Correo") & (log["Campaña"] == campana) & (log["Estado"] == "Enviado")]["Contacto"].astype(str).str.lower())
+        ya = set(log[(log["Canal"].astype(str).str.strip() == "Correo")
+                     & (log["Campaña"].astype(str).str.strip().str.lower() == campana.lower())
+                     & (log["Estado"].astype(str).str.strip() == "Enviado")]["Contacto"].astype(str).str.strip().str.lower())
         omitir_repetidos = st.checkbox("No enviar a quienes ya recibieron esta campaña", value=True, key="mail_rep")
         if omitir_repetidos and ya:
+            antes_rep = len(cand)
             cand = cand[~cand["Email"].astype(str).str.strip().str.lower().isin(ya)]
+            st.caption(f"📨 {antes_rep - len(cand)} contactos de este segmento ya recibieron «{campana}» y no se muestran.")
         if sin_mail:
             st.caption(f"⚠️ {sin_mail} contactos del segmento no tienen email válido y se omiten.")
 
@@ -511,7 +520,8 @@ def render_campanas(df, conn, usuario_actual, es_admin, lista_asesores, guardar_
                 except Exception:
                     pass
                 registrar(conn, filas)
-                st.success(f"✅ Campaña terminada: {ok} enviados, {err} con error. Quedó registrado en el historial.")
+                st.success(f"✅ Campaña terminada: {ok} enviados, {err} con error. Quedó registrado en el historial. "
+                           "Recargá la página para ver los contactos que faltan.")
 
     # ================================================================ WHATSAPP
     with t_wa:
